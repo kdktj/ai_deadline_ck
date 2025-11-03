@@ -1,0 +1,78 @@
+import axios from 'axios';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Request interceptor to add auth token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor for error handling
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+// API endpoints
+export const apiService = {
+  // Health check
+  health: () => api.get('/health'),
+  
+  // Auth endpoints (to be implemented in Phase 2)
+  login: (credentials) => api.post('/api/auth/login', credentials),
+  register: (userData) => api.post('/api/auth/register', userData),
+  logout: () => api.post('/api/auth/logout'),
+  getCurrentUser: () => api.get('/api/auth/me'),
+  
+  // Projects endpoints (to be implemented in Phase 3)
+  getProjects: (params) => api.get('/api/projects', { params }),
+  getProject: (id) => api.get(`/api/projects/${id}`),
+  createProject: (data) => api.post('/api/projects', data),
+  updateProject: (id, data) => api.put(`/api/projects/${id}`, data),
+  deleteProject: (id) => api.delete(`/api/projects/${id}`),
+  
+  // Tasks endpoints (to be implemented in Phase 3)
+  getTasks: (params) => api.get('/api/tasks', { params }),
+  getTask: (id) => api.get(`/api/tasks/${id}`),
+  createTask: (data) => api.post('/api/tasks', data),
+  updateTask: (id, data) => api.put(`/api/tasks/${id}`, data),
+  updateTaskProgress: (id, progress) => api.patch(`/api/tasks/${id}/progress`, { progress }),
+  deleteTask: (id) => api.delete(`/api/tasks/${id}`),
+  
+  // Forecast endpoints (to be implemented in Phase 4)
+  getForecasts: (params) => api.get('/api/forecasts', { params }),
+  getLatestForecasts: () => api.get('/api/forecasts/latest'),
+  analyzeTaskRisk: () => api.post('/api/forecasts/analyze'),
+  
+  // Simulation endpoints (to be implemented in Phase 4)
+  getSimulations: (params) => api.get('/api/simulations', { params }),
+  runSimulation: (data) => api.post('/api/simulations/run', data),
+  
+  // Automation logs endpoints (to be implemented in Phase 5)
+  getAutomationLogs: (params) => api.get('/api/automation-logs', { params }),
+};
+
+export default api;
