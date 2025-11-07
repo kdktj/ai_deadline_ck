@@ -47,12 +47,10 @@ async def root():
         "health": "/health"
     }
 
-# Import and include routers here as they are developed
-# Example:
-# from app.routers import auth, projects, tasks
-# app.include_router(auth.router)
-# app.include_router(projects.router)
-# app.include_router(tasks.router)
+# Import and include routers
+from app.routers import auth_router
+
+app.include_router(auth_router)
 
 @app.on_event("startup")
 async def startup_event():
