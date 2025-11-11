@@ -10,23 +10,13 @@ from app.models.user import UserRole
 class UserRegister(BaseModel):
     """Schema for user registration"""
     email: EmailStr = Field(..., description="User email address")
-    username: str = Field(..., min_length=3, max_length=50, description="Username")
     full_name: str = Field(..., min_length=1, max_length=100, description="Full name")
     password: str = Field(..., min_length=6, description="Password")
-    
-    @field_validator('username')
-    @classmethod
-    def validate_username(cls, v: str) -> str:
-        """Validate username format - only letters, numbers, and underscores"""
-        # Check if all characters are alphanumeric or underscore
-        if not all(c.isalnum() or c == '_' for c in v):
-            raise ValueError('Username must contain only letters, numbers, and underscores')
-        return v
 
 
 class UserLogin(BaseModel):
     """Schema for user login"""
-    username: str = Field(..., description="Username or email")
+    email: str = Field(..., description="Email address")
     password: str = Field(..., description="Password")
 
 
