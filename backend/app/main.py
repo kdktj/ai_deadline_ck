@@ -5,6 +5,7 @@ Configures middleware, routes, and startup/shutdown events.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
+from app.routers import auth, users
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -21,6 +22,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(auth.router)
+app.include_router(users.router)
 
 @app.get("/health")
 async def health_check():
@@ -44,13 +49,14 @@ async def root():
         "message": "Welcome to AI Deadline Forecasting Agent API",
         "version": settings.APP_VERSION,
         "docs": "/docs",
-        "health": "/health"
+        "health": "/health",
+        "auth": "/api/auth",
+        "users": "/api/users"
     }
 
-# Import and include routers here as they are developed
+# Import and include additional routers as they are developed
 # Example:
-# from app.routers import auth, projects, tasks
-# app.include_router(auth.router)
+# from app.routers import projects, tasks
 # app.include_router(projects.router)
 # app.include_router(tasks.router)
 
