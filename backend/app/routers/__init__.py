@@ -1,6 +1,9 @@
+
 # Routers package
 # API route handlers
 
-from app.routers.auth import router as auth_router
+from app.routers import auth, users
 
-__all__ = ["auth_router"]
+__all__ = ["auth", "users"]
+
+
