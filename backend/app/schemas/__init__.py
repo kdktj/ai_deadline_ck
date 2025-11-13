@@ -1,22 +1,22 @@
 # Schemas package
 # Pydantic models for request/response validation
 
-from app.schemas.auth import (
-    UserRegister,
+from app.schemas.user import (
+    UserBase,
+    UserCreate,
     UserLogin,
-    Token,
-    TokenData,
+    UserUpdate,
     UserResponse,
-    UserProfile,
-    PasswordChange,
+    Token,
+    TokenData
 )
 
 __all__ = [
-    "UserRegister",
+    "UserBase",
+    "UserCreate",
     "UserLogin",
-    "Token",
-    "TokenData",
+    "UserUpdate",
     "UserResponse",
-    "UserProfile",
-    "PasswordChange",
+    "Token",
+    "TokenData"
 ]

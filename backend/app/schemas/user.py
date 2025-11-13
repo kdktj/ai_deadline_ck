@@ -7,13 +7,6 @@ from typing import Optional
 from app.models.user import UserRole
 
 
-
-class UserRegister(BaseModel):
-    """Schema for user registration"""
-    email: EmailStr = Field(..., description="User email address")
-    full_name: str = Field(..., min_length=1, max_length=100, description="Full name")
-    password: str = Field(..., min_length=6, description="Password")
-
 class UserBase(BaseModel):
     """Base user schema with common fields"""
     email: EmailStr
@@ -26,12 +19,8 @@ class UserCreate(UserBase):
     password: str = Field(..., min_length=6, max_length=100)
 
 
-
 class UserLogin(BaseModel):
     """Schema for user login"""
-
-    email: str = Field(..., description="Email address")
-    password: str = Field(..., description="Password")
     email: EmailStr
     password: str
 
@@ -52,7 +41,6 @@ class UserResponse(UserBase):
 
     class Config:
         from_attributes = True
-
 
 
 class Token(BaseModel):

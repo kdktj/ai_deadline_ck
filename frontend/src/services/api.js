@@ -9,10 +9,10 @@ const api = axios.create({
   },
 });
 
-// Request interceptor to add auth token (matching login.jsx pattern)
+// Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('access_token');
+    const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -23,19 +23,14 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor for error handling (matching login.jsx pattern)
+// Response interceptor for error handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
       // Token expired or invalid
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('user');
-      
-      // Only redirect if not already on login page (avoid redirect loop)
-      if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
-        window.location.href = '/login';
-      }
+      localStorage.removeItem('token');
+      window.location.href = '/login';
     }
     return Promise.reject(error);
   }
@@ -46,12 +41,11 @@ export const apiService = {
   // Health check
   health: () => api.get('/health'),
   
-  // Auth endpoints
-  login: (credentials) => api.post('/api/auth/login-json', credentials),
+  // Auth endpoints (to be implemented in Phase 2)
+  login: (credentials) => api.post('/api/auth/login', credentials),
   register: (userData) => api.post('/api/auth/register', userData),
   logout: () => api.post('/api/auth/logout'),
   getCurrentUser: () => api.get('/api/auth/me'),
-  // updateProfile: (data) => api.put('/api/auth/profile', data), // TODO: Implement in backend
   
   // Projects endpoints (to be implemented in Phase 3)
   getProjects: (params) => api.get('/api/projects', { params }),
