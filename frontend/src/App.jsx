@@ -6,6 +6,10 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Projects from './pages/Projects';
+import Tasks from './pages/Tasks';
+import Simulations from './pages/Simulations';
+import AutomationLogs from './pages/AutomationLogs';
 import { Loader2 } from 'lucide-react';
 
 // Protected Route Component - requires authentication
@@ -75,6 +79,10 @@ function AppRoutes() {
       }>
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
+        <Route path="projects" element={<Projects />} />
+        <Route path="tasks" element={<Tasks />} />
+        <Route path="simulations" element={<Simulations />} />
+        <Route path="logs" element={<AutomationLogs />} />
         <Route path="*" element={
           <div className="p-8 text-center">
             <h2 className="text-2xl font-bold text-gray-800">404 - Trang không tồn tại</h2>

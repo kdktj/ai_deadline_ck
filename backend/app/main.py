@@ -48,10 +48,16 @@ async def root():
     }
 
 # Import and include routers
-from app.routers import auth
+from app.routers import auth, projects, tasks, forecasts, simulations, automation_logs, webhooks
 
 # Include routers
 app.include_router(auth.router)
+app.include_router(projects.router)
+app.include_router(tasks.router)
+app.include_router(forecasts.router)
+app.include_router(simulations.router)
+app.include_router(automation_logs.router)
+app.include_router(webhooks.router)
 
 @app.on_event("startup")
 async def startup_event():
