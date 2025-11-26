@@ -41,20 +41,22 @@ export const apiService = {
   // Health check
   health: () => api.get('/health'),
   
-  // Auth endpoints (to be implemented in Phase 2)
+  // Auth endpoints
   login: (credentials) => api.post('/api/auth/login', credentials),
   register: (userData) => api.post('/api/auth/register', userData),
   logout: () => api.post('/api/auth/logout'),
   getCurrentUser: () => api.get('/api/auth/me'),
+  getAllUsers: (params) => api.get('/api/auth/users', { params }),
   
-  // Projects endpoints (to be implemented in Phase 3)
+  // Projects endpoints
   getProjects: (params) => api.get('/api/projects', { params }),
   getProject: (id) => api.get(`/api/projects/${id}`),
   createProject: (data) => api.post('/api/projects', data),
   updateProject: (id, data) => api.put(`/api/projects/${id}`, data),
   deleteProject: (id) => api.delete(`/api/projects/${id}`),
+  createDemoProject: () => api.post('/api/projects/demo'),
   
-  // Tasks endpoints (to be implemented in Phase 3)
+  // Tasks endpoints
   getTasks: (params) => api.get('/api/tasks', { params }),
   getTask: (id) => api.get(`/api/tasks/${id}`),
   createTask: (data) => api.post('/api/tasks', data),
@@ -62,17 +64,17 @@ export const apiService = {
   updateTaskProgress: (id, progress) => api.patch(`/api/tasks/${id}/progress`, { progress }),
   deleteTask: (id) => api.delete(`/api/tasks/${id}`),
   
-  // Forecast endpoints (to be implemented in Phase 4)
+  // Forecast endpoints
   getForecasts: (params) => api.get('/api/forecasts', { params }),
   getLatestForecasts: () => api.get('/api/forecasts/latest'),
-  analyzeTaskRisk: () => api.post('/api/forecasts/analyze'),
   
-  // Simulation endpoints (to be implemented in Phase 4)
+  // Simulation endpoints
   getSimulations: (params) => api.get('/api/simulations', { params }),
   runSimulation: (data) => api.post('/api/simulations/run', data),
   
-  // Automation logs endpoints (to be implemented in Phase 5)
+  // Automation logs endpoints
   getAutomationLogs: (params) => api.get('/api/automation-logs', { params }),
+  getAutomationLog: (id) => api.get(`/api/automation-logs/${id}`),
 };
 
 export default api;
