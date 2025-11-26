@@ -1,17 +1,19 @@
 """
-Forecasts router - handles forecast log retrieval.
+Forecasts router - handles forecast log retrieval and AI analysis.
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
 
 from app.database import get_db
 from app.models.user import User
 from app.models.project import Project
 from app.models.task import Task
 from app.models.forecast_log import ForecastLog, RiskLevel
+from app.models.automation_log import AutomationLog, AutomationStatus
 from app.schemas.forecast import ForecastResponse, ForecastListResponse
 from app.utils.auth import get_current_user
+from app.services.gemini_service import gemini_service
 
 router = APIRouter(prefix="/api/forecasts", tags=["forecasts"])
 
@@ -153,3 +155,150 @@ async def get_latest_forecasts(
         forecasts_response.append(ForecastResponse(**forecast_dict))
     
     return ForecastListResponse(forecasts=forecasts_response, total=len(forecasts_response))
+
+@router.post("/analyze", response_model=ForecastListResponse, status_code=status.HTTP_201_CREATED)
+async def analyze_forecasts(
+    project_id: Optional[int] = Query(None, description="Analyze tasks for specific project"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Phân tích rủi ro cho tasks sử dụng AI.
+    
+    Gọi Gemini AI để phân tích và tạo forecast logs mới.
+    Nếu có project_id, chỉ phân tích tasks của project đó.
+    Nếu không, phân tích tất cả tasks đang in_progress của user.
+    
+    Args:
+        project_id: Optional project ID to filter tasks
+        db: Database session
+        current_user: Người dùng hiện tại
+        
+    Returns:
+        ForecastListResponse: Danh sách forecasts mới được tạo
+    """
+    from datetime import datetime
+    import json
+    
+    # Build query for tasks
+    query = db.query(Task).join(Project)
+    
+    # Authorization filter
+    if current_user.role != "admin":
+        query = query.filter(Project.owner_id == current_user.id)
+    
+    # Project filter
+    if project_id:
+        # Verify project exists and user has access
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Không tìm thấy dự án"
+            )
+        if current_user.role != "admin" and project.owner_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Không có quyền truy cập dự án này"
+            )
+        query = query.filter(Task.project_id == project_id)
+    
+    # Only analyze in_progress tasks
+    query = query.filter(Task.status == "in_progress")
+    
+    tasks = query.all()
+    
+    if not tasks:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy task nào đang in_progress để phân tích"
+        )
+    
+    # Prepare task data for AI
+    task_data = []
+    for task in tasks:
+        task_data.append({
+            "id": task.id,
+            "name": task.name,
+            "progress": task.progress,
+            "deadline": task.deadline.isoformat() if task.deadline else None,
+            "status": task.status.value if hasattr(task.status, 'value') else task.status,
+            "priority": task.priority.value if hasattr(task.priority, 'value') else task.priority,
+            "last_progress_update": task.last_progress_update.isoformat() if task.last_progress_update else None
+        })
+    
+    # Log automation start
+    automation_log = AutomationLog(
+        workflow_name="AI Forecast Analysis",
+        status=AutomationStatus.RUNNING,
+        input_data={"task_count": len(tasks), "project_id": project_id}
+    )
+    db.add(automation_log)
+    db.commit()
+    
+    # Call AI service
+    try:
+        ai_results = gemini_service.analyze_task_risk(task_data)
+        
+        # Save forecast logs
+        new_forecasts = []
+        for result in ai_results:
+            # Map risk_level string to enum
+            try:
+                risk_enum = RiskLevel(result.get("risk_level", "medium"))
+            except ValueError:
+                risk_enum = RiskLevel.MEDIUM
+            
+            forecast = ForecastLog(
+                task_id=result.get("task_id"),
+                risk_level=risk_enum,
+                risk_percentage=result.get("risk_percentage", 0.0),
+                predicted_delay_days=result.get("predicted_delay_days", 0),
+                analysis=result.get("analysis", ""),
+                recommendations=result.get("recommendations", "")
+            )
+            db.add(forecast)
+            new_forecasts.append(forecast)
+        
+        # Update automation log success
+        automation_log.status = AutomationStatus.SUCCESS
+        automation_log.output_data = {"forecasts_created": len(new_forecasts)}
+        
+        db.commit()
+        
+        # Refresh to get IDs
+        for forecast in new_forecasts:
+            db.refresh(forecast)
+        
+        # Build response
+        forecasts_response = []
+        for forecast in new_forecasts:
+            task = db.query(Task).filter(Task.id == forecast.task_id).first()
+            task_name = task.name if task else None
+            
+            forecast_dict = {
+                "id": forecast.id,
+                "task_id": forecast.task_id,
+                "task_name": task_name,
+                "risk_level": forecast.risk_level.value,
+                "risk_percentage": forecast.risk_percentage,
+                "predicted_delay_days": forecast.predicted_delay_days,
+                "analysis": forecast.analysis,
+                "recommendations": forecast.recommendations,
+                "created_at": forecast.created_at
+            }
+            forecasts_response.append(ForecastResponse(**forecast_dict))
+        
+        return ForecastListResponse(forecasts=forecasts_response, total=len(forecasts_response))
+        
+    except Exception as e:
+        # Update automation log failure
+        automation_log.status = AutomationStatus.FAILED
+        automation_log.error_message = str(e)
+        db.commit()
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi khi phân tích AI: {str(e)}"
+        )
+

@@ -67,6 +67,9 @@ export const apiService = {
   // Forecast endpoints
   getForecasts: (params) => api.get('/api/forecasts', { params }),
   getLatestForecasts: () => api.get('/api/forecasts/latest'),
+  analyzeForecast: (projectId) => api.post('/api/forecasts/analyze', null, { 
+    params: projectId ? { project_id: projectId } : {} 
+  }),
   
   // Simulation endpoints
   getSimulations: (params) => api.get('/api/simulations', { params }),

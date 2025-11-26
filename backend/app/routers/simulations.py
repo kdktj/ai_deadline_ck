@@ -1,5 +1,5 @@
 """
-Simulations router - handles scenario simulation.
+Simulations router - handles scenario simulation with AI integration.
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
@@ -11,8 +11,10 @@ from app.models.user import User
 from app.models.project import Project
 from app.models.task import Task
 from app.models.simulation_log import SimulationLog
+from app.models.automation_log import AutomationLog, AutomationStatus
 from app.schemas.simulation import SimulationRequest, SimulationResponse, SimulationListResponse
 from app.utils.auth import get_current_user
+from app.services.gemini_service import gemini_service
 
 router = APIRouter(prefix="/api/simulations", tags=["simulations"])
 
@@ -83,9 +85,9 @@ async def run_simulation(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Chạy mô phỏng kịch bản "What-if".
+    Chạy mô phỏng kịch bản "What-if" sử dụng AI.
     
-    Tạm thời trả về kết quả mock. Trong Phase 4 sẽ tích hợp AI thực tế.
+    Sử dụng Gemini AI để phân tích tác động của kịch bản giả định.
     
     Args:
         simulation_data: Thông tin mô phỏng
@@ -116,70 +118,85 @@ async def run_simulation(
     # Get project tasks for context
     tasks = db.query(Task).filter(Task.project_id == project.id).all()
     
-    # TODO: Phase 4 - Call AI service for real analysis
-    # For now, return mock data
-    import random
+    # Prepare data for AI
+    task_data = []
+    for task in tasks:
+        task_data.append({
+            "id": task.id,
+            "name": task.name,
+            "progress": task.progress,
+            "deadline": task.deadline.isoformat() if task.deadline else None,
+            "status": task.status.value if hasattr(task.status, 'value') else task.status,
+            "priority": task.priority.value if hasattr(task.priority, 'value') else task.priority,
+        })
     
-    # Mock affected tasks (randomly select 2-4 tasks)
-    affected_task_ids = []
-    if len(tasks) > 0:
-        num_affected = min(random.randint(2, 4), len(tasks))
-        affected_tasks = random.sample(tasks, num_affected)
-        affected_task_ids = [t.id for t in affected_tasks]
-    
-    # Mock delay
-    total_delay_days = random.randint(3, 10)
-    
-    # Mock AI analysis
-    analysis = f"""
-    Phân tích kịch bản: "{simulation_data.scenario}"
-    
-    Kết quả mô phỏng:
-    - Số tasks bị ảnh hưởng: {len(affected_task_ids)}
-    - Tổng thời gian trễ dự kiến: {total_delay_days} ngày
-    - Mức độ ảnh hưởng: {'Cao' if total_delay_days > 7 else 'Trung bình' if total_delay_days > 4 else 'Thấp'}
-    
-    Chi tiết:
-    Nếu kịch bản này xảy ra, các task phụ thuộc sẽ bị ảnh hưởng theo chuỗi.
-    Thời gian hoàn thành dự án có thể bị đẩy lùi {total_delay_days} ngày.
-    
-    [Đây là kết quả mô phỏng mock - Phase 4 sẽ tích hợp AI thực tế]
-    """
-    
-    recommendations = f"""
-    Khuyến nghị:
-    1. Ưu tiên các tasks bị ảnh hưởng nhiều nhất
-    2. Xem xét tái phân bổ nguồn lực để giảm rủi ro
-    3. Có kế hoạch dự phòng cho các tasks phụ thuộc
-    4. Theo dõi sát sao tiến độ các tasks quan trọng
-    
-    [Khuyến nghị chi tiết sẽ có trong Phase 4]
-    """
-    
-    # Save simulation log
-    new_simulation = SimulationLog(
-        project_id=simulation_data.project_id,
-        scenario=simulation_data.scenario,
-        affected_task_ids=affected_task_ids,
-        total_delay_days=total_delay_days,
-        analysis=analysis.strip(),
-        recommendations=recommendations.strip()
-    )
-    
-    db.add(new_simulation)
-    db.commit()
-    db.refresh(new_simulation)
-    
-    # Build response
-    sim_dict = {
-        "id": new_simulation.id,
-        "project_id": new_simulation.project_id,
-        "scenario": new_simulation.scenario,
-        "affected_task_ids": new_simulation.affected_task_ids or [],
-        "total_delay_days": new_simulation.total_delay_days,
-        "analysis": new_simulation.analysis,
-        "recommendations": new_simulation.recommendations,
-        "simulated_at": new_simulation.simulated_at
+    project_data = {
+        "id": project.id,
+        "name": project.name,
+        "tasks": task_data
     }
     
-    return SimulationResponse(**sim_dict)
+    # Log automation start
+    automation_log = AutomationLog(
+        workflow_name="AI Scenario Simulation",
+        status=AutomationStatus.RUNNING,
+        input_data={
+            "project_id": project.id,
+            "scenario": simulation_data.scenario,
+            "task_count": len(tasks)
+        }
+    )
+    db.add(automation_log)
+    db.commit()
+    
+    # Call AI service
+    try:
+        ai_result = gemini_service.simulate_scenario(project_data, simulation_data.scenario)
+        
+        # Save simulation log
+        new_simulation = SimulationLog(
+            project_id=simulation_data.project_id,
+            scenario=simulation_data.scenario,
+            affected_task_ids=ai_result.get("affected_task_ids", []),
+            total_delay_days=ai_result.get("total_delay_days", 0),
+            analysis=ai_result.get("analysis", ""),
+            recommendations=ai_result.get("recommendations", "")
+        )
+        
+        db.add(new_simulation)
+        
+        # Update automation log success
+        automation_log.status = AutomationStatus.SUCCESS
+        automation_log.output_data = {
+            "simulation_id": new_simulation.id,
+            "affected_tasks": len(ai_result.get("affected_task_ids", [])),
+            "delay_days": ai_result.get("total_delay_days", 0)
+        }
+        
+        db.commit()
+        db.refresh(new_simulation)
+        
+        # Build response
+        sim_dict = {
+            "id": new_simulation.id,
+            "project_id": new_simulation.project_id,
+            "scenario": new_simulation.scenario,
+            "affected_task_ids": new_simulation.affected_task_ids or [],
+            "total_delay_days": new_simulation.total_delay_days,
+            "analysis": new_simulation.analysis,
+            "recommendations": new_simulation.recommendations,
+            "simulated_at": new_simulation.simulated_at
+        }
+        
+        return SimulationResponse(**sim_dict)
+        
+    except Exception as e:
+        # Update automation log failure
+        automation_log.status = AutomationStatus.FAILED
+        automation_log.error_message = str(e)
+        db.commit()
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi khi chạy mô phỏng AI: {str(e)}"
+        )
