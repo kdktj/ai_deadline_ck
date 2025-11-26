@@ -41,10 +41,61 @@ services:
     depends_on:
       - postgres
 
+  # n8n Workflow Automation
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: ai_deadline_n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # Basic configuration
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+
+      # Timezone
+      - GENERIC_TIMEZONE=Asia/Ho_Chi_Minh
+      - TZ=Asia/Ho_Chi_Minh
+
+      # Execution data
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=all
+      - EXECUTIONS_DATA_SAVE_ON_ERROR=all
+      - EXECUTIONS_DATA_MAX_AGE=168
+
+      # Backend API URL (use host.docker.internal to access host machine)
+      - BACKEND_API_URL=http://host.docker.internal:8000
+
+      # Gemini API Key (add your key here or use .env file)
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+
+      # Email configuration (optional - for sending alerts)
+      - EMAIL_HOST=${EMAIL_HOST:-smtp.gmail.com}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - EMAIL_USER=${EMAIL_USER:-}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD:-}
+      - EMAIL_FROM=${EMAIL_FROM:-noreply@ai-deadline.io.vn}
+
+      # Admin email (for receiving alerts)
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n-workflows:/workflows:ro
+    networks:
+      - ai_deadline_network
+    extra_hosts:
+      # Allow n8n container to access host machine via host.docker.internal
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - postgres
+
 volumes:
   postgres_data:
     driver: local
   pgadmin_data:
+    driver: local
+  n8n_data:
     driver: local
 
 networks:
