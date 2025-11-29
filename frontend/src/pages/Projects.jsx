@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { apiService } from '../services/api';
-import { PlusCircle, Folder, Calendar, CheckCircle, AlertCircle } from 'lucide-react';
+import { PlusCircle, Folder, Calendar, Edit, Trash2 } from 'lucide-react';
+import CreateProjectModal from '../components/projects/CreateProjectModal';
+import EditProjectModal from '../components/projects/EditProjectModal';
+import DeleteProjectModal from '../components/projects/DeleteProjectModal';
 
 export default function Projects() {
   const [projects, setProjects] = useState([]);
@@ -9,6 +12,9 @@ export default function Projects() {
   const [error, setError] = useState(null);
   const [statusFilter, setStatusFilter] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [selectedProject, setSelectedProject] = useState(null);
 
   useEffect(() => {
     fetchProjects();
@@ -45,6 +51,20 @@ export default function Projects() {
       on_hold: 'Tạm dừng',
     };
     return labels[status] || status;
+  };
+
+  const handleEdit = (e, project) => {
+    e.preventDefault(); // Prevent navigation to detail page
+    e.stopPropagation();
+    setSelectedProject(project);
+    setShowEditModal(true);
+  };
+
+  const handleDelete = (e, project) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedProject(project);
+    setShowDeleteModal(true);
   };
 
   if (loading) {
@@ -117,8 +137,26 @@ export default function Projects() {
             <Link
               key={project.id}
               to={`/projects/${project.id}`}
-              className="block bg-white border rounded-lg hover:shadow-lg transition-shadow p-6"
+              className="block bg-white border rounded-lg hover:shadow-lg transition-shadow p-6 relative group"
             >
+              {/* Action Buttons - Show on Hover */}
+              <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={(e) => handleEdit(e, project)}
+                  className="p-2 bg-white border border-gray-300 rounded-lg hover:bg-blue-50 hover:border-blue-500 transition-colors shadow-sm"
+                  title="Chỉnh sửa"
+                >
+                  <Edit size={16} className="text-blue-600" />
+                </button>
+                <button
+                  onClick={(e) => handleDelete(e, project)}
+                  className="p-2 bg-white border border-gray-300 rounded-lg hover:bg-red-50 hover:border-red-500 transition-colors shadow-sm"
+                  title="Xóa"
+                >
+                  <Trash2 size={16} className="text-red-600" />
+                </button>
+              </div>
+
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center">
                   <Folder className="h-8 w-8 text-blue-600" />
@@ -180,23 +218,32 @@ export default function Projects() {
         </div>
       )}
 
-      {/* Create Project Modal - Simple version */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-semibold mb-4">Tạo dự án mới</h3>
-            <p className="text-gray-600 mb-4">
-              Form tạo dự án sẽ được triển khai chi tiết sau.
-            </p>
-            <button
-              onClick={() => setShowCreateModal(false)}
-              className="w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
-            >
-              Đóng
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Modals */}
+      <CreateProjectModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={fetchProjects}
+      />
+
+      <EditProjectModal
+        isOpen={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setSelectedProject(null);
+        }}
+        project={selectedProject}
+        onSuccess={fetchProjects}
+      />
+
+      <DeleteProjectModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setSelectedProject(null);
+        }}
+        project={selectedProject}
+        onSuccess={fetchProjects}
+      />
     </div>
   );
 }

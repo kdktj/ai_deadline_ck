@@ -5,14 +5,17 @@ import {
   LayoutDashboard, 
   FolderKanban, 
   CheckSquare, 
+  TrendingUp,
   PlayCircle, 
   FileText,
   Settings,
   Menu,
   X,
   LogOut,
-  User
+  User,
+  Shield
 } from 'lucide-react';
+import { cn } from '../utils/cn';
 
 const Layout = () => {
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
@@ -25,8 +28,10 @@ const Layout = () => {
     { path: '/dashboard', icon: LayoutDashboard, label: 'Tổng quan' },
     { path: '/projects', icon: FolderKanban, label: 'Dự án' },
     { path: '/tasks', icon: CheckSquare, label: 'Công việc' },
+    { path: '/forecasts', icon: TrendingUp, label: 'Dự đoán rủi ro' },
     { path: '/simulations', icon: PlayCircle, label: 'Mô phỏng' },
     { path: '/logs', icon: FileText, label: 'Nhật ký' },
+    ...(user?.role === 'admin' ? [{ path: '/admin', icon: Shield, label: 'Quản trị' }] : []),
   ];
 
   const isActive = (path) => location.pathname === path;
@@ -56,16 +61,21 @@ const Layout = () => {
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
             >
-              {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
+              {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
-            <h1 className="text-xl font-bold text-primary-600">
-              AI Deadline Forecasting
-            </h1>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-lg">AI</span>
+              </div>
+              <h1 className="text-xl font-bold text-gray-900 hidden sm:block">
+                AI Deadline Forecasting
+              </h1>
+            </div>
           </div>
           
-          <div className="flex items-center space-x-4">
-            <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
-              <Settings size={20} className="text-gray-600" />
+          <div className="flex items-center space-x-2">
+            <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors hidden md:block">
+              <Settings className="w-5 h-5 text-gray-600" />
             </button>
             
             {/* User Menu */}
@@ -137,13 +147,14 @@ const Layout = () => {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                className={cn(
+                  'flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200',
                   isActive(item.path)
-                    ? 'bg-primary-50 text-primary-600 font-medium'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
+                    ? 'bg-blue-50 text-blue-600 font-medium shadow-sm'
+                    : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                )}
               >
-                <Icon size={20} />
+                <Icon className="w-5 h-5" />
                 <span>{item.label}</span>
               </Link>
             );

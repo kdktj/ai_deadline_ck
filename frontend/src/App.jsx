@@ -1,13 +1,16 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
 import { useAuth } from './hooks/useAuth';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Projects from './pages/Projects';
+import ProjectDetail from './pages/ProjectDetail';
 import Tasks from './pages/Tasks';
+import Forecasts from './pages/Forecasts';
 import Simulations from './pages/Simulations';
 import AutomationLogs from './pages/AutomationLogs';
 import { Loader2 } from 'lucide-react';
@@ -80,7 +83,9 @@ function AppRoutes() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="projects" element={<Projects />} />
+        <Route path="projects/:id" element={<ProjectDetail />} />
         <Route path="tasks" element={<Tasks />} />
+        <Route path="forecasts" element={<Forecasts />} />
         <Route path="simulations" element={<Simulations />} />
         <Route path="logs" element={<AutomationLogs />} />
         <Route path="*" element={
@@ -98,7 +103,9 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <AppRoutes />
+        <ToastProvider>
+          <AppRoutes />
+        </ToastProvider>
       </AuthProvider>
     </Router>
   );

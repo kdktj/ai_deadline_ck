@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import { apiService } from '../services/api';
-import { CheckSquare, Clock, AlertTriangle, Filter } from 'lucide-react';
+import { CheckSquare, Clock, AlertTriangle, Filter, PlusCircle, Edit, Trash2 } from 'lucide-react';
+import Button from '../components/common/Button';
+import CreateTaskModal from '../components/tasks/CreateTaskModal';
+import EditTaskModal from '../components/tasks/EditTaskModal';
+import DeleteTaskModal from '../components/tasks/DeleteTaskModal';
 
 export default function Tasks() {
   const [tasks, setTasks] = useState([]);
@@ -8,6 +12,10 @@ export default function Tasks() {
   const [error, setError] = useState(null);
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [selectedTask, setSelectedTask] = useState(null);
 
   useEffect(() => {
     fetchTasks();
@@ -87,9 +95,17 @@ export default function Tasks() {
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Quản lý Tasks</h1>
-        <p className="text-gray-600 mt-1">Theo dõi tiến độ công việc</p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Quản lý Tasks</h1>
+          <p className="text-gray-600 mt-1">Theo dõi tiến độ công việc</p>
+        </div>
+        <Button
+          onClick={() => setShowCreateModal(true)}
+        >
+          <PlusCircle size={18} className="mr-2" />
+          Tạo task mới
+        </Button>
       </div>
 
       {/* Filters */}
@@ -138,7 +154,19 @@ export default function Tasks() {
           </div>
           <div className="space-y-3">
             {todoTasks.map((task) => (
-              <TaskCard key={task.id} task={task} onUpdateProgress={updateProgress} />
+              <TaskCard 
+                key={task.id} 
+                task={task} 
+                onUpdateProgress={updateProgress}
+                onEdit={(task) => {
+                  setSelectedTask(task);
+                  setShowEditModal(true);
+                }}
+                onDelete={(task) => {
+                  setSelectedTask(task);
+                  setShowDeleteModal(true);
+                }}
+              />
             ))}
           </div>
         </div>
@@ -153,7 +181,19 @@ export default function Tasks() {
           </div>
           <div className="space-y-3">
             {inProgressTasks.map((task) => (
-              <TaskCard key={task.id} task={task} onUpdateProgress={updateProgress} />
+              <TaskCard 
+                key={task.id} 
+                task={task} 
+                onUpdateProgress={updateProgress}
+                onEdit={(task) => {
+                  setSelectedTask(task);
+                  setShowEditModal(true);
+                }}
+                onDelete={(task) => {
+                  setSelectedTask(task);
+                  setShowDeleteModal(true);
+                }}
+              />
             ))}
           </div>
         </div>
@@ -168,7 +208,19 @@ export default function Tasks() {
           </div>
           <div className="space-y-3">
             {doneTasks.map((task) => (
-              <TaskCard key={task.id} task={task} onUpdateProgress={updateProgress} />
+              <TaskCard 
+                key={task.id} 
+                task={task} 
+                onUpdateProgress={updateProgress}
+                onEdit={(task) => {
+                  setSelectedTask(task);
+                  setShowEditModal(true);
+                }}
+                onDelete={(task) => {
+                  setSelectedTask(task);
+                  setShowDeleteModal(true);
+                }}
+              />
             ))}
           </div>
         </div>
@@ -183,12 +235,39 @@ export default function Tasks() {
           </p>
         </div>
       )}
+
+      {/* Modals */}
+      <CreateTaskModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={fetchTasks}
+      />
+
+      <EditTaskModal
+        isOpen={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setSelectedTask(null);
+        }}
+        task={selectedTask}
+        onSuccess={fetchTasks}
+      />
+
+      <DeleteTaskModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setSelectedTask(null);
+        }}
+        task={selectedTask}
+        onSuccess={fetchTasks}
+      />
     </div>
   );
 }
 
 // Task Card Component
-function TaskCard({ task, onUpdateProgress }) {
+function TaskCard({ task, onUpdateProgress, onEdit, onDelete }) {
   const getPriorityColor = (priority) => {
     const colors = {
       low: 'bg-gray-100 text-gray-800',
@@ -210,9 +289,27 @@ function TaskCard({ task, onUpdateProgress }) {
   };
 
   return (
-    <div className="bg-white p-4 rounded-lg border shadow-sm hover:shadow-md transition-shadow">
+    <div className="bg-white p-4 rounded-lg border shadow-sm hover:shadow-md transition-shadow group relative">
+      {/* Action Buttons */}
+      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={() => onEdit(task)}
+          className="p-1.5 bg-white border border-gray-300 rounded hover:bg-blue-50 hover:border-blue-500 transition-colors shadow-sm"
+          title="Chỉnh sửa"
+        >
+          <Edit size={14} className="text-blue-600" />
+        </button>
+        <button
+          onClick={() => onDelete(task)}
+          className="p-1.5 bg-white border border-gray-300 rounded hover:bg-red-50 hover:border-red-500 transition-colors shadow-sm"
+          title="Xóa"
+        >
+          <Trash2 size={14} className="text-red-600" />
+        </button>
+      </div>
+
       <div className="flex items-start justify-between mb-2">
-        <h4 className="font-medium text-gray-900 text-sm flex-1">{task.name}</h4>
+        <h4 className="font-medium text-gray-900 text-sm flex-1 pr-12">{task.name}</h4>
         <span className={`px-2 py-1 rounded-full text-xs font-medium ml-2 ${getPriorityColor(task.priority)}`}>
           {getPriorityLabel(task.priority)}
         </span>

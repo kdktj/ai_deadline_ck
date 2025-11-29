@@ -1,0 +1,46 @@
+import React from 'react';
+import { cn } from '../../utils/cn';
+
+const Textarea = React.forwardRef(({ 
+  label,
+  error,
+  helperText,
+  className,
+  containerClassName,
+  required = false,
+  rows = 4,
+  ...props 
+}, ref) => {
+  const textareaStyles = 'w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors resize-y';
+  
+  return (
+    <div className={cn('space-y-1', containerClassName)}>
+      {label && (
+        <label className="block text-sm font-medium text-gray-700">
+          {label}
+          {required && <span className="text-red-500 ml-1">*</span>}
+        </label>
+      )}
+      <textarea
+        ref={ref}
+        rows={rows}
+        className={cn(
+          textareaStyles,
+          error ? 'border-red-500 focus:ring-red-500' : 'border-gray-300',
+          className
+        )}
+        {...props}
+      />
+      {error && (
+        <p className="text-sm text-red-600">{error}</p>
+      )}
+      {helperText && !error && (
+        <p className="text-sm text-gray-500">{helperText}</p>
+      )}
+    </div>
+  );
+});
+
+Textarea.displayName = 'Textarea';
+
+export default Textarea;
