@@ -4,6 +4,7 @@ Provides functions for password verification, token creation, and user authentic
 """
 from datetime import datetime, timedelta
 from typing import Optional
+import hashlib
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
@@ -24,6 +25,26 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # HTTP Bearer security scheme
 security = HTTPBearer()
 
+def _normalize_password(password: str) -> str:
+    """
+    Normalize password for bcrypt (max 72 bytes).
+    Uses SHA256 to handle passwords longer than 72 bytes.
+    
+    Args:
+        password: Plain text password
+        
+    Returns:
+        str: Normalized password (hex digest if > 72 bytes, otherwise original)
+    """
+    # Convert to bytes to check length
+    password_bytes = password.encode('utf-8')
+    
+    # If password is longer than 72 bytes, hash it first with SHA256
+    if len(password_bytes) > 72:
+        return hashlib.sha256(password_bytes).hexdigest()
+    
+    return password
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Verify a plain password against a hashed password.
@@ -35,11 +56,13 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         bool: True if password matches, False otherwise
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    normalized = _normalize_password(plain_password)
+    return pwd_context.verify(normalized, hashed_password)
 
 def get_password_hash(password: str) -> str:
     """
     Hash a plain password using bcrypt.
+    If password is longer than 72 bytes, it's normalized with SHA256 first.
     
     Args:
         password: Plain text password
@@ -47,7 +70,8 @@ def get_password_hash(password: str) -> str:
     Returns:
         str: Hashed password
     """
-    return pwd_context.hash(password)
+    normalized = _normalize_password(password)
+    return pwd_context.hash(normalized)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """

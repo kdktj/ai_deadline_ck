@@ -12,7 +12,7 @@ class UserCreate(BaseModel):
     """
     email: EmailStr = Field(..., description="User's email address")
     username: str = Field(..., min_length=3, max_length=50, description="Unique username")
-    password: str = Field(..., min_length=6, description="User password (minimum 6 characters)")
+    password: str = Field(..., min_length=6, max_length=128, description="User password (6-128 characters)")
     full_name: str = Field(..., min_length=2, max_length=100, description="User's full name")
     
     model_config = ConfigDict(

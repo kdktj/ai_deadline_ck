@@ -33,6 +33,8 @@ class Task(Base):
         status: Task status
         priority: Task priority level
         progress: Task completion percentage (0-100)
+        estimated_hours: Estimated hours to complete the task
+        actual_hours: Actual hours spent on the task
         deadline: Task deadline
         last_progress_update: Last time progress was updated
         created_at: Task creation timestamp
@@ -48,6 +50,8 @@ class Task(Base):
     status = Column(Enum(TaskStatus), default=TaskStatus.TODO, nullable=False)
     priority = Column(Enum(TaskPriority), default=TaskPriority.MEDIUM, nullable=False)
     progress = Column(Float, default=0.0, nullable=False)  # 0-100
+    estimated_hours = Column(Float, nullable=True)  # Estimated hours to complete
+    actual_hours = Column(Float, nullable=True)  # Actual hours spent
     deadline = Column(DateTime, nullable=False)
     last_progress_update = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
