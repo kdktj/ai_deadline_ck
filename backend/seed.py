@@ -129,15 +129,14 @@ def seed_data():
         db.commit()
         print(f"✅ Created {len(projects)} projects")
         
-        # Create tasks
+        # Create tasks - Mỗi task thuộc về project owner, không có assigned_to
         print("📝 Creating tasks...")
         tasks = [
-            # Website Redesign tasks
+            # Website Redesign tasks (projects[0] thuộc users[1])
             Task(
                 name="Thiết kế mockup trang chủ",
                 description="Tạo mockup cho trang chủ với Figma",
                 project_id=projects[0].id,
-                assigned_to=users[1].id,
                 status=TaskStatus.DONE,
                 priority=TaskPriority.HIGH,
                 progress=100.0,
@@ -149,7 +148,6 @@ def seed_data():
                 name="Phát triển Frontend trang chủ",
                 description="Code React components cho trang chủ",
                 project_id=projects[0].id,
-                assigned_to=users[2].id,
                 status=TaskStatus.IN_PROGRESS,
                 priority=TaskPriority.HIGH,
                 progress=65.0,
@@ -161,7 +159,6 @@ def seed_data():
                 name="Tích hợp API Backend",
                 description="Kết nối Frontend với API Backend",
                 project_id=projects[0].id,
-                assigned_to=users[2].id,
                 status=TaskStatus.TODO,
                 priority=TaskPriority.MEDIUM,
                 progress=0.0,
@@ -170,12 +167,11 @@ def seed_data():
                 created_at=today - timedelta(days=5)
             ),
             
-            # Mobile App tasks
+            # Mobile App tasks (projects[1] thuộc users[1])
             Task(
                 name="Setup React Native project",
                 description="Khởi tạo project React Native",
                 project_id=projects[1].id,
-                assigned_to=users[1].id,
                 status=TaskStatus.DONE,
                 priority=TaskPriority.CRITICAL,
                 progress=100.0,
@@ -187,7 +183,6 @@ def seed_data():
                 name="Phát triển màn hình đăng nhập",
                 description="UI và logic cho màn hình đăng nhập",
                 project_id=projects[1].id,
-                assigned_to=users[1].id,
                 status=TaskStatus.IN_PROGRESS,
                 priority=TaskPriority.HIGH,
                 progress=80.0,
@@ -199,7 +194,6 @@ def seed_data():
                 name="Tích hợp Firebase Authentication",
                 description="Setup Firebase cho authentication",
                 project_id=projects[1].id,
-                assigned_to=users[2].id,
                 status=TaskStatus.IN_PROGRESS,
                 priority=TaskPriority.HIGH,
                 progress=40.0,
@@ -211,7 +205,6 @@ def seed_data():
                 name="Phát triển màn hình Dashboard",
                 description="UI dashboard với charts và stats",
                 project_id=projects[1].id,
-                assigned_to=users[1].id,
                 status=TaskStatus.TODO,
                 priority=TaskPriority.MEDIUM,
                 progress=0.0,
@@ -220,12 +213,11 @@ def seed_data():
                 created_at=today - timedelta(days=5)
             ),
             
-            # AI Chatbot tasks
+            # AI Chatbot tasks (projects[2] thuộc users[2])
             Task(
                 name="Research AI models",
                 description="Nghiên cứu các AI models phù hợp",
                 project_id=projects[2].id,
-                assigned_to=users[2].id,
                 status=TaskStatus.DONE,
                 priority=TaskPriority.HIGH,
                 progress=100.0,
@@ -237,7 +229,6 @@ def seed_data():
                 name="Setup Gemini API integration",
                 description="Tích hợp Gemini API vào backend",
                 project_id=projects[2].id,
-                assigned_to=users[2].id,
                 status=TaskStatus.IN_PROGRESS,
                 priority=TaskPriority.CRITICAL,
                 progress=55.0,
@@ -249,7 +240,6 @@ def seed_data():
                 name="Tạo Chat UI component",
                 description="Component giao diện chat trong app",
                 project_id=projects[2].id,
-                assigned_to=users[1].id,
                 status=TaskStatus.IN_PROGRESS,
                 priority=TaskPriority.HIGH,
                 progress=30.0,
@@ -261,7 +251,6 @@ def seed_data():
                 name="Testing và Fine-tuning",
                 description="Test chatbot và điều chỉnh prompts",
                 project_id=projects[2].id,
-                assigned_to=users[2].id,
                 status=TaskStatus.TODO,
                 priority=TaskPriority.MEDIUM,
                 progress=0.0,
@@ -270,12 +259,11 @@ def seed_data():
                 created_at=today - timedelta(days=1)
             ),
             
-            # Database Migration tasks
+            # Database Migration tasks (projects[3] thuộc users[2])
             Task(
                 name="Backup MySQL database",
                 description="Full backup trước khi migrate",
                 project_id=projects[3].id,
-                assigned_to=users[1].id,
                 status=TaskStatus.DONE,
                 priority=TaskPriority.CRITICAL,
                 progress=100.0,
@@ -287,7 +275,6 @@ def seed_data():
                 name="Setup PostgreSQL server",
                 description="Cài đặt và config PostgreSQL",
                 project_id=projects[3].id,
-                assigned_to=users[2].id,
                 status=TaskStatus.TODO,
                 priority=TaskPriority.HIGH,
                 progress=0.0,
@@ -296,12 +283,11 @@ def seed_data():
                 created_at=today - timedelta(days=20)
             ),
             
-            # API Documentation tasks
+            # API Documentation tasks (projects[4] thuộc users[1])
             Task(
                 name="Viết API documentation",
                 description="Tài liệu tất cả endpoints với OpenAPI",
                 project_id=projects[4].id,
-                assigned_to=users[1].id,
                 status=TaskStatus.DONE,
                 priority=TaskPriority.MEDIUM,
                 progress=100.0,
@@ -313,7 +299,6 @@ def seed_data():
                 name="Deploy documentation site",
                 description="Deploy docs lên hosting",
                 project_id=projects[4].id,
-                assigned_to=users[2].id,
                 status=TaskStatus.DONE,
                 priority=TaskPriority.LOW,
                 progress=100.0,

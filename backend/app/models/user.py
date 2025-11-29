@@ -37,4 +37,3 @@ class User(Base):
     
     # Relationships
     projects = relationship("Project", back_populates="owner", cascade="all, delete-orphan")
-    assigned_tasks = relationship("Task", back_populates="assignee")

@@ -15,6 +15,240 @@ from app.schemas.auth import MessageResponse
 
 router = APIRouter(prefix="/api/webhooks/n8n", tags=["webhooks"])
 
+# ============================================================
+# PUBLIC ENDPOINTS FOR N8N (NO AUTHENTICATION REQUIRED)
+# ============================================================
+
+@router.get("/projects")
+async def get_projects_for_n8n(db: Session = Depends(get_db)):
+    """
+    Lấy danh sách tất cả projects cho n8n workflows.
+    
+    KHÔNG CẦN XÁC THỰC - Endpoint này chỉ dành cho n8n internal calls.
+    
+    Returns:
+        dict: Danh sách projects
+    """
+    from app.models.project import Project
+    from app.models.user import User
+    
+    projects = db.query(Project).all()
+    
+    projects_data = []
+    for p in projects:
+        owner = db.query(User).filter(User.id == p.owner_id).first()
+        projects_data.append({
+            "id": p.id,
+            "name": p.name,
+            "description": p.description,
+            "owner_id": p.owner_id,
+            "owner_name": owner.full_name if owner else None,
+            "status": p.status.value,
+            "start_date": str(p.start_date) if p.start_date else None,
+            "end_date": str(p.end_date) if p.end_date else None,
+            "created_at": p.created_at.isoformat() if p.created_at else None
+        })
+    
+    return {"projects": projects_data, "total": len(projects_data)}
+
+@router.get("/tasks")
+async def get_tasks_for_n8n(db: Session = Depends(get_db)):
+    """
+    Lấy danh sách tất cả tasks cho n8n workflows.
+    
+    KHÔNG CẦN XÁC THỰC - Endpoint này chỉ dành cho n8n internal calls.
+    
+    Returns:
+        dict: Danh sách tasks
+    """
+    from app.models.task import Task
+    from app.models.user import User
+    from app.models.project import Project
+    
+    tasks = db.query(Task).all()
+    
+    tasks_data = []
+    for t in tasks:
+        project = db.query(Project).filter(Project.id == t.project_id).first()
+        owner = db.query(User).filter(User.id == project.owner_id).first() if project else None
+        
+        tasks_data.append({
+            "id": t.id,
+            "project_id": t.project_id,
+            "project_name": project.name if project else None,
+            "name": t.name,
+            "description": t.description,
+            "owner_id": project.owner_id if project else None,
+            "owner_name": owner.full_name if owner else None,
+            "priority": t.priority.value,
+            "status": t.status.value,
+            "progress": t.progress,
+            "estimated_hours": t.estimated_hours,
+            "actual_hours": t.actual_hours,
+            "deadline": str(t.deadline) if t.deadline else None,
+            "last_progress_update": t.last_progress_update.isoformat() if t.last_progress_update else None,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "updated_at": t.updated_at.isoformat() if t.updated_at else None
+        })
+    
+    return {"tasks": tasks_data, "total": len(tasks_data)}
+
+@router.get("/forecasts/latest")
+async def get_latest_forecasts_for_n8n(db: Session = Depends(get_db)):
+    """
+    Lấy forecast logs mới nhất cho n8n workflows.
+    
+    KHÔNG CẦN XÁC THỰC - Endpoint này chỉ dành cho n8n internal calls.
+    
+    Returns:
+        dict: Danh sách forecast logs
+    """
+    from app.models.forecast_log import ForecastLog
+    from app.models.task import Task
+    from sqlalchemy import func
+    
+    # Get latest forecast for each task
+    subquery = db.query(
+        ForecastLog.task_id,
+        func.max(ForecastLog.created_at).label('max_created')
+    ).group_by(ForecastLog.task_id).subquery()
+    
+    forecasts = db.query(ForecastLog).join(
+        subquery,
+        (ForecastLog.task_id == subquery.c.task_id) &
+        (ForecastLog.created_at == subquery.c.max_created)
+    ).all()
+    
+    forecasts_data = []
+    for f in forecasts:
+        task = db.query(Task).filter(Task.id == f.task_id).first()
+        forecasts_data.append({
+            "id": f.id,
+            "task_id": f.task_id,
+            "task_name": task.name if task else None,
+            "risk_level": f.risk_level.value,
+            "risk_percentage": f.risk_percentage,
+            "predicted_delay_days": f.predicted_delay_days,
+            "analysis": f.analysis,
+            "recommendations": f.recommendations,
+            "created_at": f.created_at.isoformat() if f.created_at else None
+        })
+    
+    return {"forecasts": forecasts_data, "total": len(forecasts_data)}
+
+@router.get("/project-owner-email/{project_id}")
+async def get_project_owner_email(project_id: int, db: Session = Depends(get_db)):
+    """
+    Lấy email của project owner.
+    
+    KHÔNG CẦN XÁC THỰC - Endpoint này chỉ dành cho n8n internal calls.
+    Dùng để n8n có thể gửi email thông báo cho project owner.
+    
+    Args:
+        project_id: ID của project
+        db: Database session
+        
+    Returns:
+        dict: Thông tin owner email và project details
+        
+    Raises:
+        HTTPException 404: Nếu project không tồn tại
+    """
+    from app.models.project import Project
+    from app.models.user import User
+    
+    # Get project
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project ID {project_id} không tồn tại"
+        )
+    
+    # Get owner
+    owner = db.query(User).filter(User.id == project.owner_id).first()
+    if not owner:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Không tìm thấy owner cho project ID {project_id}"
+        )
+    
+    return {
+        "project_id": project_id,
+        "project_name": project.name,
+        "owner_id": project.owner_id,
+        "owner_email": owner.email,
+        "owner_name": owner.full_name or owner.username
+    }
+
+@router.get("/task-user-email/{task_id}")
+async def get_task_user_email(task_id: int, db: Session = Depends(get_db)):
+    """
+    Lấy email của user được assign cho task.
+    
+    KHÔNG CẦN XÁC THỰC - Endpoint này chỉ dành cho n8n internal calls.
+    Dùng để n8n có thể gửi email thông báo cho đúng user được assign task.
+    
+    Args:
+        task_id: ID của task
+        db: Database session
+        
+    Returns:
+        dict: Thông tin user email, task name và thông tin liên quan
+        
+    Raises:
+        HTTPException 404: Nếu task không tồn tại
+    """
+    from app.models.task import Task
+    from app.models.user import User
+    from app.models.project import Project
+    
+    # Get task
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task ID {task_id} không tồn tại"
+        )
+    
+    # Get assigned user
+    user_email = None
+    user_name = None
+    if task.assigned_to:
+        user = db.query(User).filter(User.id == task.assigned_to).first()
+        if user:
+            user_email = user.email
+            user_name = user.full_name or user.username
+    
+    # Get project info
+    project = db.query(Project).filter(Project.id == task.project_id).first()
+    project_name = project.name if project else None
+    
+    # Get project owner email as fallback
+    owner_email = None
+    if project and project.owner_id:
+        owner = db.query(User).filter(User.id == project.owner_id).first()
+        if owner:
+            owner_email = owner.email
+    
+    return {
+        "task_id": task_id,
+        "task_name": task.name,
+        "task_status": task.status.value,
+        "task_priority": task.priority.value,
+        "project_id": task.project_id,
+        "project_name": project_name,
+        "assigned_to": task.assigned_to,
+        "user_email": user_email,  # Email của user được assign
+        "user_name": user_name,
+        "owner_email": owner_email,  # Email của owner project (fallback)
+        "has_assigned_user": task.assigned_to is not None
+    }
+
+# ============================================================
+# WEBHOOK HANDLERS
+# ============================================================
+
 class NewUserWebhook(BaseModel):
     """Schema for new user webhook from n8n"""
     user_id: int

@@ -19,7 +19,6 @@ router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 @router.get("", response_model=TaskListResponse)
 async def get_tasks(
     project_id: Optional[int] = Query(None, description="Filter by project ID"),
-    assigned_to: Optional[int] = Query(None, description="Filter by assigned user ID"),
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by status"),
     priority: Optional[str] = Query(None, description="Filter by priority"),
     skip: int = Query(0, ge=0),
@@ -28,14 +27,13 @@ async def get_tasks(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Lấy danh sách tasks.
+    Lấy danh sách tasks của user hiện tại.
     
-    - User thường chỉ thấy tasks thuộc projects của mình hoặc được assign cho mình
-    - Admin thấy tất cả tasks
+    User chỉ thấy tasks thuộc projects của mình.
+    Admin có thể thấy tất cả tasks.
     
     Args:
         project_id: Lọc theo dự án
-        assigned_to: Lọc theo người được gán
         status_filter: Lọc theo trạng thái
         priority: Lọc theo độ ưu tiên
         skip: Số lượng bản ghi bỏ qua
@@ -46,25 +44,16 @@ async def get_tasks(
     Returns:
         TaskListResponse: Danh sách tasks và tổng số
     """
-    query = db.query(Task)
+    query = db.query(Task).join(Project)
     
     # Apply authorization filter
     if current_user.role != "admin":
-        # User xem tasks của projects mình sở hữu hoặc tasks được assign cho mình
-        from sqlalchemy import or_
-        query = query.join(Project).filter(
-            or_(
-                Project.owner_id == current_user.id,
-                Task.assigned_to == current_user.id
-            )
-        )
+        # User chỉ xem tasks của projects mình sở hữu
+        query = query.filter(Project.owner_id == current_user.id)
     
     # Apply filters
     if project_id:
         query = query.filter(Task.project_id == project_id)
-    
-    if assigned_to:
-        query = query.filter(Task.assigned_to == assigned_to)
     
     if status_filter:
         try:
@@ -95,13 +84,13 @@ async def get_tasks(
     # Enrich response with additional data
     tasks_response = []
     for task in tasks:
-        # Get assignee name
-        assignee = db.query(User).filter(User.id == task.assigned_to).first() if task.assigned_to else None
-        assigned_name = assignee.full_name if assignee else None
-        
-        # Get project name
+        # Get project info
         project = db.query(Project).filter(Project.id == task.project_id).first()
         project_name = project.name if project else None
+        
+        # Get owner name
+        owner = db.query(User).filter(User.id == project.owner_id).first() if project else None
+        owner_name = owner.full_name if owner else None
         
         task_dict = {
             "id": task.id,
@@ -109,8 +98,7 @@ async def get_tasks(
             "description": task.description,
             "project_id": task.project_id,
             "project_name": project_name,
-            "assigned_to": task.assigned_to,
-            "assigned_name": assigned_name,
+            "owner_name": owner_name,
             "priority": task.priority.value,
             "status": task.status.value,
             "progress": int(task.progress),
@@ -157,16 +145,16 @@ async def get_task(
     # Check authorization
     project = db.query(Project).filter(Project.id == task.project_id).first()
     if current_user.role != "admin":
-        if not project or (project.owner_id != current_user.id and task.assigned_to != current_user.id):
+        if not project or project.owner_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Không có quyền truy cập task này"
             )
     
     # Enrich response
-    assignee = db.query(User).filter(User.id == task.assigned_to).first() if task.assigned_to else None
-    assigned_name = assignee.full_name if assignee else None
     project_name = project.name if project else None
+    owner = db.query(User).filter(User.id == project.owner_id).first() if project else None
+    owner_name = owner.full_name if owner else None
     
     task_dict = {
         "id": task.id,
@@ -174,8 +162,7 @@ async def get_task(
         "description": task.description,
         "project_id": task.project_id,
         "project_name": project_name,
-        "assigned_to": task.assigned_to,
-        "assigned_name": assigned_name,
+        "owner_name": owner_name,
         "priority": task.priority.value,
         "status": task.status.value,
         "progress": int(task.progress),
@@ -196,7 +183,9 @@ async def create_task(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Tạo task mới.
+    Tạo task mới cho project của user.
+    
+    Task tự động thuộc về project owner (current_user phải là owner).
     
     Args:
         task_data: Thông tin task mới
@@ -224,22 +213,12 @@ async def create_task(
             detail="Không có quyền tạo task trong dự án này"
         )
     
-    # Verify assigned user exists (if provided)
-    if task_data.assigned_to:
-        assignee = db.query(User).filter(User.id == task_data.assigned_to).first()
-        if not assignee:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Người dùng được gán không tồn tại"
-            )
-    
-    # Create task
+    # Create task - thuộc về project của user
     try:
         new_task = Task(
             name=task_data.name,
             description=task_data.description,
             project_id=task_data.project_id,
-            assigned_to=task_data.assigned_to,
             priority=TaskPriority(task_data.priority),
             status=TaskStatus(task_data.status),
             progress=0,
@@ -257,8 +236,8 @@ async def create_task(
         )
     
     # Build response
-    assignee = db.query(User).filter(User.id == new_task.assigned_to).first() if new_task.assigned_to else None
-    assigned_name = assignee.full_name if assignee else None
+    owner = db.query(User).filter(User.id == project.owner_id).first()
+    owner_name = owner.full_name if owner else None
     
     task_dict = {
         "id": new_task.id,
@@ -266,8 +245,7 @@ async def create_task(
         "description": new_task.description,
         "project_id": new_task.project_id,
         "project_name": project.name,
-        "assigned_to": new_task.assigned_to,
-        "assigned_name": assigned_name,
+        "owner_name": owner_name,
         "priority": new_task.priority.value,
         "status": new_task.status.value,
         "progress": int(new_task.progress),
@@ -289,7 +267,7 @@ async def update_task(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Cập nhật thông tin task.
+    Cập nhật thông tin task của user.
     
     Args:
         task_id: ID của task
@@ -312,10 +290,10 @@ async def update_task(
             detail="Không tìm thấy task"
         )
     
-    # Check authorization
+    # Check authorization - chỉ project owner mới sửa được
     project = db.query(Project).filter(Project.id == task.project_id).first()
     if current_user.role != "admin":
-        if not project or (project.owner_id != current_user.id and task.assigned_to != current_user.id):
+        if not project or project.owner_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Không có quyền chỉnh sửa task này"
@@ -346,9 +324,9 @@ async def update_task(
         )
     
     # Build response
-    assignee = db.query(User).filter(User.id == task.assigned_to).first() if task.assigned_to else None
-    assigned_name = assignee.full_name if assignee else None
     project_name = project.name if project else None
+    owner = db.query(User).filter(User.id == project.owner_id).first() if project else None
+    owner_name = owner.full_name if owner else None
     
     task_dict = {
         "id": task.id,
@@ -356,8 +334,7 @@ async def update_task(
         "description": task.description,
         "project_id": task.project_id,
         "project_name": project_name,
-        "assigned_to": task.assigned_to,
-        "assigned_name": assigned_name,
+        "owner_name": owner_name,
         "priority": task.priority.value,
         "status": task.status.value,
         "progress": int(task.progress),
@@ -379,7 +356,7 @@ async def update_task_progress(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Cập nhật tiến độ task.
+    Cập nhật tiến độ task của user.
     
     Endpoint đặc biệt để cập nhật nhanh tiến độ và timestamp.
     
@@ -407,7 +384,7 @@ async def update_task_progress(
     # Check authorization
     project = db.query(Project).filter(Project.id == task.project_id).first()
     if current_user.role != "admin":
-        if not project or (project.owner_id != current_user.id and task.assigned_to != current_user.id):
+        if not project or project.owner_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Không có quyền cập nhật task này"
@@ -427,9 +404,9 @@ async def update_task_progress(
     db.refresh(task)
     
     # Build response
-    assignee = db.query(User).filter(User.id == task.assigned_to).first() if task.assigned_to else None
-    assigned_name = assignee.full_name if assignee else None
     project_name = project.name if project else None
+    owner = db.query(User).filter(User.id == project.owner_id).first() if project else None
+    owner_name = owner.full_name if owner else None
     
     task_dict = {
         "id": task.id,
@@ -437,8 +414,7 @@ async def update_task_progress(
         "description": task.description,
         "project_id": task.project_id,
         "project_name": project_name,
-        "assigned_to": task.assigned_to,
-        "assigned_name": assigned_name,
+        "owner_name": owner_name,
         "priority": task.priority.value,
         "status": task.status.value,
         "progress": int(task.progress),
