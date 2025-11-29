@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { apiService } from '../services/api';
-import { Activity, CheckCircle, XCircle, Clock, Filter } from 'lucide-react';
+import { Activity, CheckCircle, XCircle, Clock, Filter, Eye } from 'lucide-react';
+import Modal from '../components/common/Modal';
+import Button from '../components/common/Button';
 
 export default function AutomationLogs() {
   const [logs, setLogs] = useState([]);
@@ -9,6 +11,7 @@ export default function AutomationLogs() {
   const [statusFilter, setStatusFilter] = useState('');
   const [workflowFilter, setWorkflowFilter] = useState('');
   const [selectedLog, setSelectedLog] = useState(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
 
   useEffect(() => {
     fetchLogs();
@@ -22,7 +25,8 @@ export default function AutomationLogs() {
       if (workflowFilter) params.workflow_name = workflowFilter;
       
       const response = await apiService.getAutomationLogs(params);
-      setLogs(response.data.logs || []);
+      // Backend returns {logs: [], total: ...}
+      setLogs(response.data?.logs || []);
       setError(null);
     } catch (err) {
       setError('Không thể tải automation logs. Vui lòng thử lại.');
@@ -160,12 +164,17 @@ export default function AutomationLogs() {
                     {new Date(log.executed_at).toLocaleString('vi-VN')}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <button
-                      onClick={() => setSelectedLog(log)}
-                      className="text-blue-600 hover:text-blue-800"
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedLog(log);
+                        setShowDetailModal(true);
+                      }}
                     >
-                      Xem chi tiết
-                    </button>
+                      <Eye size={16} className="mr-1" />
+                      Chi tiết
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -176,78 +185,76 @@ export default function AutomationLogs() {
 
       {/* Log Detail Modal */}
       {selectedLog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-start mb-4">
-              <h3 className="text-lg font-semibold">Chi tiết Log</h3>
-              <button
-                onClick={() => setSelectedLog(null)}
-                className="text-gray-400 hover:text-gray-600 text-2xl"
-              >
-                ×
-              </button>
+        <Modal
+          isOpen={showDetailModal}
+          onClose={() => {
+            setShowDetailModal(false);
+            setSelectedLog(null);
+          }}
+          title="Chi tiết Automation Log"
+          size="xl"
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Workflow:</label>
+                <p className="text-gray-900 font-medium">{selectedLog.workflow_name}</p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Trạng thái:</label>
+                <span className={`px-3 py-1 inline-flex text-sm font-semibold rounded-full ${getStatusColor(selectedLog.status)}`}>
+                  {getStatusLabel(selectedLog.status)}
+                </span>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Thời gian thực thi:</label>
+                <p className="text-gray-900">
+                  {new Date(selectedLog.created_at || selectedLog.executed_at).toLocaleString('vi-VN')}
+                </p>
+              </div>
+
+              {selectedLog.execution_time_ms && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Thời gian chạy:</label>
+                  <p className="text-gray-900">{selectedLog.execution_time_ms} ms</p>
+                </div>
+              )}
             </div>
 
-            <div className="space-y-4">
+            {selectedLog.input_data && (
               <div>
-                <label className="text-sm font-medium text-gray-700">Workflow:</label>
-                <p className="text-gray-900">{selectedLog.workflow_name}</p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-700">Trạng thái:</label>
-                <p>
-                  <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(selectedLog.status)}`}>
-                    {getStatusLabel(selectedLog.status)}
-                  </span>
-                </p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-700">Thời gian thực thi:</label>
-                <p className="text-gray-900">
-                  {new Date(selectedLog.executed_at).toLocaleString('vi-VN')}
-                </p>
-              </div>
-
-              {selectedLog.input_data && (
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Input Data:</label>
-                  <pre className="mt-1 p-3 bg-gray-50 rounded text-xs overflow-auto">
+                <label className="text-sm font-medium text-gray-700 block mb-2">📥 Input Data:</label>
+                <div className="bg-gray-900 text-green-400 rounded-lg p-4 overflow-auto max-h-64">
+                  <pre className="text-xs font-mono">
                     {JSON.stringify(selectedLog.input_data, null, 2)}
                   </pre>
                 </div>
-              )}
+              </div>
+            )}
 
-              {selectedLog.output_data && (
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Output Data:</label>
-                  <pre className="mt-1 p-3 bg-gray-50 rounded text-xs overflow-auto">
+            {selectedLog.output_data && (
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-2">📤 Output Data:</label>
+                <div className="bg-gray-900 text-blue-400 rounded-lg p-4 overflow-auto max-h-64">
+                  <pre className="text-xs font-mono">
                     {JSON.stringify(selectedLog.output_data, null, 2)}
                   </pre>
                 </div>
-              )}
+              </div>
+            )}
 
-              {selectedLog.error_message && (
-                <div>
-                  <label className="text-sm font-medium text-red-700">Error Message:</label>
-                  <p className="mt-1 p-3 bg-red-50 rounded text-sm text-red-700">
-                    {selectedLog.error_message}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-6">
-              <button
-                onClick={() => setSelectedLog(null)}
-                className="w-full px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
-              >
-                Đóng
-              </button>
-            </div>
+            {selectedLog.error_message && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <label className="text-sm font-medium text-red-700 block mb-2">❌ Error Message:</label>
+                <p className="text-sm text-red-700 font-mono">
+                  {selectedLog.error_message}
+                </p>
+              </div>
+            )}
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

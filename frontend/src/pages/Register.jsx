@@ -61,6 +61,11 @@ const Register = () => {
       return false;
     }
 
+    if (formData.password.length > 128) {
+      setError('Mật khẩu không được vượt quá 128 ký tự');
+      return false;
+    }
+
     // Check password confirmation
     if (formData.password !== formData.confirmPassword) {
       setError('Mật khẩu xác nhận không khớp');
@@ -213,10 +218,11 @@ const Register = () => {
                 value={formData.password}
                 onChange={handleChange}
                 placeholder="Nhập mật khẩu"
+                maxLength={128}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200 outline-none"
                 disabled={isLoading || success}
               />
-              <p className="mt-1 text-xs text-gray-500">Tối thiểu 6 ký tự</p>
+              <p className="mt-1 text-xs text-gray-500">6-128 ký tự</p>
             </div>
 
             {/* Confirm Password Field */}
@@ -231,6 +237,7 @@ const Register = () => {
                 value={formData.confirmPassword}
                 onChange={handleChange}
                 placeholder="Nhập lại mật khẩu"
+                maxLength={128}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200 outline-none"
                 disabled={isLoading || success}
               />

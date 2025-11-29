@@ -23,6 +23,57 @@ services:
       timeout: 5s
       retries: 5
 
+  # Backend API (FastAPI)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai_deadline_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://ai_user:ai_password@postgres:5432/ai_deadline
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      FRONTEND_URL: http://frontend:5173
+      N8N_WEBHOOK_URL: http://n8n:5678
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    networks:
+      - ai_deadline_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo '⏳ Waiting for database...' &&
+        sleep 5 &&
+        echo '🔄 Running database migrations...' &&
+        alembic upgrade head &&
+        echo '🚀 Starting backend server...' &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+  # Frontend (React + Vite)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ai_deadline_frontend
+    restart: unless-stopped
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - ai_deadline_network
+    depends_on:
+      - backend
+
   # pgAdmin (Optional - Web UI for PostgreSQL)
   pgadmin:
     image: dpage/pgadmin4:latest
@@ -64,8 +115,8 @@ services:
       - EXECUTIONS_DATA_SAVE_ON_ERROR=all
       - EXECUTIONS_DATA_MAX_AGE=168
 
-      # Backend API URL (use host.docker.internal to access host machine)
-      - BACKEND_API_URL=http://host.docker.internal:8000
+      # Backend API URL (now using internal Docker network)
+      - BACKEND_API_URL=http://backend:8000
 
       # Gemini API Key (add your key here or use .env file)
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
@@ -84,11 +135,9 @@ services:
       - ./n8n-workflows:/workflows:ro
     networks:
       - ai_deadline_network
-    extra_hosts:
-      # Allow n8n container to access host machine via host.docker.internal
-      - "host.docker.internal:host-gateway"
     depends_on:
       - postgres
+      - backend
 
 volumes:
   postgres_data:

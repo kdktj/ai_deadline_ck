@@ -1,5 +1,8 @@
 import axios from 'axios';
 
+// Backend API URL - tự động nhận từ environment variable
+// Trong Docker: VITE_API_URL được set trong docker-compose.yml
+// Local dev: có thể set trong .env.local
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const api = axios.create({
@@ -30,7 +33,15 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       // Token expired or invalid
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      
+      // Only redirect if not already on login/register page
+      const currentPath = window.location.pathname;
+      if (currentPath !== '/login' && currentPath !== '/register') {
+        // Use setTimeout to avoid navigation during render
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 0);
+      }
     }
     return Promise.reject(error);
   }

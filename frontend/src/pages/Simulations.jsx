@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { apiService } from '../services/api';
-import { Play, History, AlertCircle } from 'lucide-react';
+import { Play, History, AlertCircle, Eye } from 'lucide-react';
+import Modal from '../components/common/Modal';
+import Button from '../components/common/Button';
 
 export default function Simulations() {
   const [projects, setProjects] = useState([]);
@@ -10,6 +12,8 @@ export default function Simulations() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [selectedSimulation, setSelectedSimulation] = useState(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
 
   useEffect(() => {
     fetchProjects();
@@ -28,7 +32,8 @@ export default function Simulations() {
   const fetchSimulations = async () => {
     try {
       const response = await apiService.getSimulations();
-      setSimulations(response.data.simulations || []);
+      // Backend returns {simulations: [], total: ...}
+      setSimulations(response.data?.simulations || []);
     } catch (err) {
       console.error('Error fetching simulations:', err);
     }
@@ -58,6 +63,11 @@ export default function Simulations() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleViewDetail = (simulation) => {
+    setSelectedSimulation(simulation);
+    setShowDetailModal(true);
   };
 
   return (
@@ -197,24 +207,118 @@ export default function Simulations() {
         {simulations.length === 0 ? (
           <p className="text-gray-500 text-center py-8">Chưa có mô phỏng nào</p>
         ) : (
-          <div className="space-y-4">
-            {simulations.map((sim) => (
-              <div key={sim.id} className="border rounded-lg p-4 hover:bg-gray-50">
-                <div className="flex justify-between items-start mb-2">
-                  <p className="font-medium text-gray-900">{sim.scenario}</p>
-                  <span className="text-xs text-gray-500">
-                    {new Date(sim.simulated_at).toLocaleString('vi-VN')}
-                  </span>
-                </div>
-                <div className="flex gap-4 text-sm text-gray-600">
-                  <span>Tasks: {sim.affected_task_ids?.length || 0}</span>
-                  <span>Trễ: {sim.total_delay_days} ngày</span>
-                </div>
-              </div>
-            ))}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Kịch bản</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Tasks ảnh hưởng</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Tổng trễ</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Thời gian</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Hành động</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {simulations.map((sim) => (
+                  <tr key={sim.id} className="hover:bg-gray-50">
+                    <td className="py-3 px-4">
+                      <p className="font-medium text-gray-900 line-clamp-2">{sim.scenario_description || sim.scenario}</p>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                        {sim.affected_task_ids?.length || 0}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <span className="inline-block px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-medium">
+                        {sim.total_delay_days || 0} ngày
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-sm text-gray-600">
+                      {new Date(sim.created_at || sim.simulated_at).toLocaleString('vi-VN')}
+                    </td>
+                    <td className="py-3 px-4">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleViewDetail(sim)}
+                      >
+                        <Eye size={16} className="mr-1" />
+                        Chi tiết
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
+
+      {/* Detail Modal */}
+      {selectedSimulation && (
+        <Modal
+          isOpen={showDetailModal}
+          onClose={() => {
+            setShowDetailModal(false);
+            setSelectedSimulation(null);
+          }}
+          title="Chi tiết mô phỏng"
+          size="lg"
+        >
+          <div className="space-y-4">
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-2">Kịch bản:</h3>
+              <p className="text-gray-700 bg-gray-50 p-3 rounded-lg">
+                {selectedSimulation.scenario_description || selectedSimulation.scenario}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+                <p className="text-sm text-blue-700 mb-1">Tasks bị ảnh hưởng</p>
+                <p className="text-3xl font-bold text-blue-900">
+                  {selectedSimulation.affected_task_ids?.length || 0}
+                </p>
+              </div>
+              <div className="bg-red-50 border border-red-200 p-4 rounded-lg">
+                <p className="text-sm text-red-700 mb-1">Tổng thời gian trễ</p>
+                <p className="text-3xl font-bold text-red-900">
+                  {selectedSimulation.total_delay_days || 0} ngày
+                </p>
+              </div>
+            </div>
+
+            {selectedSimulation.ai_impact_analysis && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="font-semibold text-gray-900 mb-2 flex items-center">
+                  🤖 Phân tích tác động AI:
+                </h3>
+                <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                  {selectedSimulation.ai_impact_analysis}
+                </p>
+              </div>
+            )}
+
+            {selectedSimulation.recommendations && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <h3 className="font-semibold text-gray-900 mb-2 flex items-center">
+                  💡 Khuyến nghị:
+                </h3>
+                <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                  {selectedSimulation.recommendations}
+                </p>
+              </div>
+            )}
+
+            <div className="pt-2 border-t">
+              <p className="text-sm text-gray-500">
+                Thời gian mô phỏng: {new Date(selectedSimulation.created_at || selectedSimulation.simulated_at).toLocaleString('vi-VN')}
+              </p>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
