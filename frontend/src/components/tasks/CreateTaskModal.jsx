@@ -13,12 +13,10 @@ export default function CreateTaskModal({ isOpen, onClose, onSuccess, defaultPro
   const [loadingData, setLoadingData] = useState(true);
   const [errors, setErrors] = useState({});
   const [projects, setProjects] = useState([]);
-  const [users, setUsers] = useState([]);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     project_id: defaultProjectId || '',
-    assigned_to: '',
     priority: 'medium',
     status: 'todo',
     estimated_hours: '',
@@ -37,12 +35,8 @@ export default function CreateTaskModal({ isOpen, onClose, onSuccess, defaultPro
   const fetchData = async () => {
     try {
       setLoadingData(true);
-      const [projectsRes, usersRes] = await Promise.all([
-        apiService.getProjects(),
-        apiService.getAllUsers(),
-      ]);
+      const projectsRes = await apiService.getProjects();
       setProjects(projectsRes.data.projects || []);
-      setUsers(usersRes.data.users || []);
     } catch (error) {
       console.error('Error fetching data:', error);
       toast.error('Không thể tải dữ liệu. Vui lòng thử lại.');
@@ -91,7 +85,6 @@ export default function CreateTaskModal({ isOpen, onClose, onSuccess, defaultPro
       const dataToSubmit = {
         ...formData,
         project_id: parseInt(formData.project_id),
-        assigned_to: formData.assigned_to ? parseInt(formData.assigned_to) : null,
         estimated_hours: formData.estimated_hours ? parseFloat(formData.estimated_hours) : null,
         deadline: formData.deadline || null,
       };
@@ -113,7 +106,6 @@ export default function CreateTaskModal({ isOpen, onClose, onSuccess, defaultPro
       name: '',
       description: '',
       project_id: defaultProjectId || '',
-      assigned_to: '',
       priority: 'medium',
       status: 'todo',
       estimated_hours: '',
@@ -186,12 +178,16 @@ export default function CreateTaskModal({ isOpen, onClose, onSuccess, defaultPro
             />
 
             <Select
-              label="Người phụ trách"
-              name="assigned_to"
-              value={formData.assigned_to}
+              label="Trạng thái"
+              name="status"
+              value={formData.status}
               onChange={handleChange}
-              options={users.map(u => ({ value: u.id, label: u.full_name || u.username }))}
-              placeholder="Chọn người (tùy chọn)"
+              options={[
+                { value: 'todo', label: 'Chưa bắt đầu' },
+                { value: 'in_progress', label: 'Đang thực hiện' },
+                { value: 'done', label: 'Hoàn thành' },
+                { value: 'blocked', label: 'Bị chặn' },
+              ]}
             />
           </div>
 
@@ -209,21 +205,6 @@ export default function CreateTaskModal({ isOpen, onClose, onSuccess, defaultPro
               ]}
             />
 
-            <Select
-              label="Trạng thái"
-              name="status"
-              value={formData.status}
-              onChange={handleChange}
-              options={[
-                { value: 'todo', label: 'Chưa bắt đầu' },
-                { value: 'in_progress', label: 'Đang thực hiện' },
-                { value: 'done', label: 'Hoàn thành' },
-                { value: 'blocked', label: 'Bị chặn' },
-              ]}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
             <Input
               label="Ước tính (giờ)"
               name="estimated_hours"
@@ -235,15 +216,15 @@ export default function CreateTaskModal({ isOpen, onClose, onSuccess, defaultPro
               placeholder="Số giờ dự kiến"
               error={errors.estimated_hours}
             />
-
-            <Input
-              label="Deadline"
-              name="deadline"
-              type="date"
-              value={formData.deadline}
-              onChange={handleChange}
-            />
           </div>
+
+          <Input
+            label="Deadline"
+            name="deadline"
+            type="date"
+            value={formData.deadline}
+            onChange={handleChange}
+          />
 
           <div className="text-sm text-gray-500 bg-blue-50 p-3 rounded-lg">
             💡 <strong>Mẹo:</strong> Task có deadline và progress sẽ được AI phân tích rủi ro tự động.

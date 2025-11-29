@@ -355,7 +355,6 @@ export default function ProjectDetail() {
                   <thead className="bg-gray-50 border-b">
                     <tr>
                       <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Task</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Người phụ trách</th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Ưu tiên</th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Trạng thái</th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Tiến độ</th>
@@ -370,9 +369,6 @@ export default function ProjectDetail() {
                           {task.description && (
                             <div className="text-sm text-gray-500 line-clamp-1">{task.description}</div>
                           )}
-                        </td>
-                        <td className="py-3 px-4 text-sm text-gray-700">
-                          {task.assigned_name || <span className="text-gray-400 italic">Chưa assign</span>}
                         </td>
                         <td className="py-3 px-4">
                           <span className={`text-sm font-medium ${getPriorityColor(task.priority)}`}>
