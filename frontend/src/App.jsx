@@ -13,6 +13,7 @@ import Tasks from './pages/Tasks';
 import Forecasts from './pages/Forecasts';
 import Simulations from './pages/Simulations';
 import AutomationLogs from './pages/AutomationLogs';
+import Admin from './pages/Admin';
 import { Loader2 } from 'lucide-react';
 
 // Protected Route Component - requires authentication
@@ -88,6 +89,7 @@ function AppRoutes() {
         <Route path="forecasts" element={<Forecasts />} />
         <Route path="simulations" element={<Simulations />} />
         <Route path="logs" element={<AutomationLogs />} />
+        <Route path="admin" element={<Admin />} />
         <Route path="*" element={
           <div className="p-8 text-center">
             <h2 className="text-2xl font-bold text-gray-800">404 - Trang không tồn tại</h2>
