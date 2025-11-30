@@ -89,6 +89,12 @@ export const apiService = {
   // Automation logs endpoints
   getAutomationLogs: (params) => api.get('/api/automation-logs', { params }),
   getAutomationLog: (id) => api.get(`/api/automation-logs/${id}`),
+  
+  // Admin endpoints
+  adminGetAllUsers: (params) => api.get('/api/admin/users', { params }),
+  adminGetUserDetail: (id) => api.get(`/api/admin/users/${id}`),
+  adminDeleteUser: (id) => api.delete(`/api/admin/users/${id}`),
+  adminGetStats: () => api.get('/api/admin/stats'),
 };
 
 export default api;

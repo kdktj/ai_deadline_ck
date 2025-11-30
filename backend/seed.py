@@ -38,6 +38,14 @@ def seed_data():
         print("👥 Creating users...")
         users = [
             User(
+                email="nhatquang.lvc@gmail.com",
+                username="admin",
+                full_name="Admin User",
+                password_hash=hash_password("admin123"),
+                role=UserRole.ADMIN,
+                created_at=datetime.utcnow()
+            ),
+            User(
                 email="quanghn.22it@vku.udn.vn",
                 username="quanghn",
                 full_name="Huỳnh Nhật Quang",
@@ -59,7 +67,7 @@ def seed_data():
             Project(
                 name="Thi chuyên đề 3 - AI Deadline Forecasting",
                 description="Dự án thi chuyên đề 3: Xây dựng hệ thống quản lý deadline với AI dự đoán rủi ro",
-                owner_id=users[0].id,
+                owner_id=users[1].id,  # Thuộc về quanghn (users[1])
                 status=ProjectStatus.ACTIVE,
                 start_date=today - timedelta(days=5),
                 end_date=today + timedelta(days=25),
@@ -76,7 +84,7 @@ def seed_data():
         # Create tasks - Mỗi task thuộc về project owner, không có assigned_to
         print("📝 Creating tasks...")
         tasks = [
-            # Thi chuyên đề 3 tasks (projects[0] thuộc users[0] - Huỳnh Nhật Quang)
+            # Thi chuyên đề 3 tasks (projects[0] thuộc users[1] - Huỳnh Nhật Quang)
             Task(
                 name="GIAI ĐOẠN 1: Setup Project & Database",
                 description="Setup Docker, FastAPI, React, PostgreSQL, n8n",
@@ -194,7 +202,9 @@ def seed_data():
         print(f"   - Projects: {len(projects)}")
         print(f"   - Tasks: {len(tasks)}")
         print("\n🔐 Login credentials:")
-        print("   User: quanghn / password123")
+        print("   Admin: admin / admin123")
+        print("   Email: nhatquang.lvc@gmail.com")
+        print("\n   User: quanghn / password123")
         print("   Email: quanghn.22it@vku.udn.vn")
         
     except Exception as e:
