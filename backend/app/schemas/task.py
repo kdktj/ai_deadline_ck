@@ -6,11 +6,10 @@ from datetime import date, datetime
 from typing import Optional
 
 class TaskBase(BaseModel):
-    """Base schema for task"""
+    """Base schema for task - mỗi user tự quản lý tasks của mình"""
     name: str = Field(..., min_length=1, max_length=255, description="Task name")
     description: Optional[str] = Field(None, description="Task description")
     project_id: int = Field(..., description="Project ID this task belongs to")
-    assigned_to: Optional[int] = Field(None, description="User ID of assignee")
     priority: str = Field(default="medium", pattern="^(low|medium|high|critical)$")
     status: str = Field(default="todo", pattern="^(todo|in_progress|done|blocked)$")
     deadline: Optional[date] = Field(None, description="Task deadline")
@@ -25,7 +24,6 @@ class TaskCreate(TaskBase):
                 "name": "Thiết kế giao diện trang chủ",
                 "description": "Thiết kế UI/UX cho trang chủ website",
                 "project_id": 1,
-                "assigned_to": 2,
                 "priority": "high",
                 "status": "todo",
                 "deadline": "2025-02-15",
@@ -38,7 +36,6 @@ class TaskUpdate(BaseModel):
     """Schema for updating a task"""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
-    assigned_to: Optional[int] = None
     priority: Optional[str] = Field(None, pattern="^(low|medium|high|critical)$")
     status: Optional[str] = Field(None, pattern="^(todo|in_progress|done|blocked)$")
     progress: Optional[int] = Field(None, ge=0, le=100, description="Progress percentage")
@@ -79,8 +76,8 @@ class TaskResponse(TaskBase):
     last_progress_update: datetime
     
     # Additional computed fields
-    assigned_name: Optional[str] = None
     project_name: Optional[str] = None
+    owner_name: Optional[str] = None  # Project owner name
     
     model_config = ConfigDict(
         from_attributes=True,
@@ -91,8 +88,7 @@ class TaskResponse(TaskBase):
                 "description": "Thiết kế UI/UX cho trang chủ website",
                 "project_id": 1,
                 "project_name": "Dự án Website",
-                "assigned_to": 2,
-                "assigned_name": "Nguyễn Văn B",
+                "owner_name": "Nguyễn Văn A",
                 "priority": "high",
                 "status": "in_progress",
                 "progress": 60,

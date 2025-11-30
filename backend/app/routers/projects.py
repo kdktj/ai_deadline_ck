@@ -382,13 +382,12 @@ async def create_demo_project(
     db.commit()
     db.refresh(demo_project)
     
-    # Create demo tasks
+    # Create demo tasks - tất cả thuộc về user này
     demo_tasks = [
         Task(
             project_id=demo_project.id,
             name="Khám phá Dashboard",
             description="Xem các biểu đồ và thống kê tổng quan",
-            assigned_to=current_user.id,
             priority=TaskPriority.HIGH,
             status=TaskStatus.DONE,
             progress=100,
@@ -400,7 +399,6 @@ async def create_demo_project(
             project_id=demo_project.id,
             name="Tạo dự án thực tế",
             description="Tạo dự án đầu tiên của bạn",
-            assigned_to=current_user.id,
             priority=TaskPriority.MEDIUM,
             status=TaskStatus.IN_PROGRESS,
             progress=50,
@@ -412,7 +410,6 @@ async def create_demo_project(
             project_id=demo_project.id,
             name="Thêm tasks vào dự án",
             description="Chia nhỏ công việc thành các task cụ thể",
-            assigned_to=current_user.id,
             priority=TaskPriority.MEDIUM,
             status=TaskStatus.TODO,
             progress=0,
@@ -423,7 +420,6 @@ async def create_demo_project(
             project_id=demo_project.id,
             name="Cập nhật tiến độ task",
             description="Cập nhật progress để AI phân tích rủi ro",
-            assigned_to=current_user.id,
             priority=TaskPriority.LOW,
             status=TaskStatus.TODO,
             progress=0,
@@ -434,7 +430,6 @@ async def create_demo_project(
             project_id=demo_project.id,
             name="Chạy mô phỏng kịch bản",
             description="Thử tính năng 'What-if' simulation",
-            assigned_to=current_user.id,
             priority=TaskPriority.LOW,
             status=TaskStatus.TODO,
             progress=0,

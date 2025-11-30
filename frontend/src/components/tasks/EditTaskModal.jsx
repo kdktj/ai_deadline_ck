@@ -13,12 +13,10 @@ export default function EditTaskModal({ isOpen, onClose, task, onSuccess }) {
   const [loadingData, setLoadingData] = useState(true);
   const [errors, setErrors] = useState({});
   const [projects, setProjects] = useState([]);
-  const [users, setUsers] = useState([]);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     project_id: '',
-    assigned_to: '',
     priority: 'medium',
     status: 'todo',
     progress: 0,
@@ -34,7 +32,6 @@ export default function EditTaskModal({ isOpen, onClose, task, onSuccess }) {
         name: task.name || '',
         description: task.description || '',
         project_id: task.project_id || '',
-        assigned_to: task.assigned_to || '',
         priority: task.priority || 'medium',
         status: task.status || 'todo',
         progress: task.progress || 0,
@@ -48,12 +45,8 @@ export default function EditTaskModal({ isOpen, onClose, task, onSuccess }) {
   const fetchData = async () => {
     try {
       setLoadingData(true);
-      const [projectsRes, usersRes] = await Promise.all([
-        apiService.getProjects(),
-        apiService.getAllUsers(),
-      ]);
+      const projectsRes = await apiService.getProjects();
       setProjects(projectsRes.data.projects || []);
-      setUsers(usersRes.data.users || []);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -100,7 +93,6 @@ export default function EditTaskModal({ isOpen, onClose, task, onSuccess }) {
       const dataToSubmit = {
         ...formData,
         project_id: parseInt(formData.project_id),
-        assigned_to: formData.assigned_to ? parseInt(formData.assigned_to) : null,
         progress: parseInt(formData.progress),
         estimated_hours: formData.estimated_hours ? parseFloat(formData.estimated_hours) : null,
         actual_hours: formData.actual_hours ? parseFloat(formData.actual_hours) : null,
@@ -169,26 +161,15 @@ export default function EditTaskModal({ isOpen, onClose, task, onSuccess }) {
             rows={3}
           />
 
-          <div className="grid grid-cols-2 gap-4">
-            <Select
-              label="Dự án"
-              name="project_id"
-              value={formData.project_id}
-              onChange={handleChange}
-              required
-              error={errors.project_id}
-              options={projects.map(p => ({ value: p.id, label: p.name }))}
-            />
-
-            <Select
-              label="Người phụ trách"
-              name="assigned_to"
-              value={formData.assigned_to}
-              onChange={handleChange}
-              options={users.map(u => ({ value: u.id, label: u.full_name || u.username }))}
-              placeholder="Chọn người"
-            />
-          </div>
+          <Select
+            label="Dự án"
+            name="project_id"
+            value={formData.project_id}
+            onChange={handleChange}
+            required
+            error={errors.project_id}
+            options={projects.map(p => ({ value: p.id, label: p.name }))}
+          />
 
           <div className="grid grid-cols-2 gap-4">
             <Select

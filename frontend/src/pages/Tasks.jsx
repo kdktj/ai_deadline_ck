@@ -319,15 +319,12 @@ function TaskCard({ task, onUpdateProgress, onEdit, onDelete }) {
         <p className="text-xs text-gray-600 mb-2 line-clamp-2">{task.description}</p>
       )}
 
-      <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
-        {task.deadline && (
-          <span className="flex items-center">
-            <Clock size={12} className="mr-1" />
-            {new Date(task.deadline).toLocaleDateString('vi-VN')}
-          </span>
-        )}
-        {task.assigned_name && <span>👤 {task.assigned_name}</span>}
-      </div>
+      {task.deadline && (
+        <div className="flex items-center text-xs text-gray-500 mb-2">
+          <Clock size={12} className="mr-1" />
+          {new Date(task.deadline).toLocaleDateString('vi-VN')}
+        </div>
+      )}
 
       {/* Progress Bar */}
       <div className="mb-2">
