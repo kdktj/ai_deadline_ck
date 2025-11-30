@@ -19,7 +19,7 @@
     },
     {
       "parameters": {
-        "url": "={{$env.BACKEND_API_URL}}/api/projects",
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/projects",
         "authentication": "none",
         "options": {}
       },
@@ -30,7 +30,7 @@
     },
     {
       "parameters": {
-        "url": "={{$env.BACKEND_API_URL}}/api/tasks",
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/tasks",
         "authentication": "none",
         "options": {}
       },
@@ -54,14 +54,9 @@
         "authentication": "none",
         "method": "POST",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "contents",
-              "value": "=[{\"parts\":[{\"text\":\"{{$json.prompt}}\"}]}]"
-            }
-          ]
-        },
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": {{JSON.stringify($json.prompt)}}\n        }\n      ]\n    }\n  ]\n}",
         "options": {}
       },
       "name": "HTTP: Gemini API",
@@ -84,34 +79,9 @@
         "authentication": "none",
         "method": "POST",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "task_id",
-              "value": "={{$json.task_id}}"
-            },
-            {
-              "name": "risk_level",
-              "value": "={{$json.risk_level}}"
-            },
-            {
-              "name": "risk_percentage",
-              "value": "={{$json.risk_percentage}}"
-            },
-            {
-              "name": "predicted_delay_days",
-              "value": "={{$json.predicted_delay_days}}"
-            },
-            {
-              "name": "ai_analysis",
-              "value": "={{$json.analysis}}"
-            },
-            {
-              "name": "recommendations",
-              "value": "={{$json.recommendations}}"
-            }
-          ]
-        },
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"task_id\": {{$json.task_id}},\n  \"risk_level\": {{JSON.stringify($json.risk_level)}},\n  \"risk_percentage\": {{$json.risk_percentage}},\n  \"predicted_delay_days\": {{$json.predicted_delay_days || 0}},\n  \"ai_analysis\": {{JSON.stringify($json.analysis || \"Không có phân tích\")}},\n  \"recommendations\": {{JSON.stringify($json.recommendations || \"Không có khuyến nghị\")}}\n}",
         "options": {}
       },
       "name": "HTTP: Save Forecast",
@@ -138,17 +108,37 @@
     },
     {
       "parameters": {
-        "fromEmail": "={{$env.EMAIL_FROM}}",
-        "toEmail": "={{$env.ADMIN_EMAIL}}",
-        "subject": "⚠️ Cảnh báo: Task có nguy cơ trễ cao",
-        "emailType": "html",
-        "message": "=<h2>Cảnh báo nguy cơ trễ deadline</h2>\n<p><strong>Task ID:</strong> {{$json.task_id}}</p>\n<p><strong>Risk Level:</strong> {{$json.risk_level}}</p>\n<p><strong>Risk Percentage:</strong> {{$json.risk_percentage}}%</p>\n<p><strong>Predicted Delay:</strong> {{$json.predicted_delay_days}} ngày</p>\n<br>\n<p><strong>Phân tích:</strong></p>\n<p>{{$json.analysis}}</p>\n<br>\n<p><strong>Khuyến nghị:</strong></p>\n<p>{{$json.recommendations}}</p>",
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/task-owner-email/{{$json.task_id}}",
+        "authentication": "none",
         "options": {}
       },
-      "name": "Send Email: Alert",
+      "name": "HTTP: Get Task Owner Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Lấy email của project owner (chủ sở hữu task)\nconst taskInfo = $input.first().json;\nconst riskData = $node['IF: High Risk Detected'].json;\n\n// Tasks thuộc về project owner - gửi email cho chính họ\nconst recipientEmail = taskInfo.owner_email;\nconst recipientName = taskInfo.owner_name || 'User';\n\nreturn {\n  json: {\n    recipientEmail: recipientEmail,\n    recipientName: recipientName,\n    taskId: riskData.task_id,\n    taskName: taskInfo.task_name,\n    taskProgress: taskInfo.task_progress || 0,\n    taskDeadline: taskInfo.task_deadline,\n    projectName: taskInfo.project_name,\n    riskLevel: riskData.risk_level,\n    riskPercentage: riskData.risk_percentage,\n    predictedDelay: riskData.predicted_delay_days,\n    analysis: riskData.analysis,\n    recommendations: riskData.recommendations\n  }\n};"
+      },
+      "name": "Function: Prepare Email Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.EMAIL_FROM}}",
+        "toEmail": "={{$json.recipientEmail}}",
+        "subject": "⚠️ Cảnh báo: Task của bạn có nguy cơ trễ cao",
+        "emailType": "html",
+        "message": "=<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; background: #f9f9f9; }\n    .header { background: #dc2626; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }\n    .content { background: white; padding: 30px; border-radius: 0 0 5px 5px; }\n    .alert-box { background: #fee; border-left: 4px solid #dc2626; padding: 15px; margin: 15px 0; }\n    .info-box { background: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 15px; margin: 15px 0; }\n    .risk-badge { display: inline-block; padding: 5px 15px; border-radius: 20px; font-weight: bold; }\n    .risk-high { background: #dc2626; color: white; }\n    .risk-critical { background: #991b1b; color: white; }\n  </style>\n</head>\n<body>\n  <div class='container'>\n    <div class='header'>\n      <h2>⚠️ CẢNH BÁO NGUY CƠ TRỄ DEADLINE</h2>\n    </div>\n    <div class='content'>\n      <p>Xin chào <strong>{{$json.recipientName}}</strong>,</p>\n      <p>Hệ thống AI phát hiện <strong>task của bạn</strong> có nguy cơ trễ deadline cao.</p>\n      \n      <div class='alert-box'>\n        <h3>📋 Task của bạn</h3>\n        <ul>\n          <li><strong>Tên task:</strong> {{$json.taskName}}</li>\n          <li><strong>Dự án:</strong> {{$json.projectName}}</li>\n          <li><strong>Task ID:</strong> #{{$json.taskId}}</li>\n          <li><strong>Tiến độ hiện tại:</strong> {{$json.taskProgress}}%</li>\n          <li><strong>Deadline:</strong> {{$json.taskDeadline}}</li>\n        </ul>\n      </div>\n      \n      <div class='alert-box'>\n        <h3>🚨 Mức độ rủi ro</h3>\n        <p>\n          <span class='risk-badge {{$json.riskLevel === \"critical\" ? \"risk-critical\" : \"risk-high\"}}'>\n            {{$json.riskLevel.toUpperCase()}}\n          </span>\n        </p>\n        <ul>\n          <li><strong>Risk Level:</strong> {{$json.riskLevel}}</li>\n          <li><strong>Risk Percentage:</strong> {{$json.riskPercentage}}%</li>\n          <li><strong>Dự đoán trễ:</strong> {{$json.predictedDelay}} ngày</li>\n        </ul>\n      </div>\n      \n      <div class='info-box'>\n        <h3>🤖 Phân tích AI</h3>\n        <p>{{$json.analysis}}</p>\n      </div>\n      \n      <div class='info-box'>\n        <h3>💡 Khuyến nghị</h3>\n        <p>{{$json.recommendations}}</p>\n      </div>\n      \n      <p style='margin-top: 30px;'>\n        <a href='http://localhost:5173/tasks' style='display: inline-block; background: #0ea5e9; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px;'>\n          Cập nhật Task ngay\n        </a>\n      </p>\n      \n      <p style='color: #666; font-size: 12px; margin-top: 30px;'>\n        <em>Email này được gửi tự động từ hệ thống AI Deadline Forecasting Agent.</em><br>\n        <em>Task này thuộc về bạn - chỉ bạn mới có thể cập nhật nó.</em>\n      </p>\n    </div>\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+        "name": "Send Email: Alert to Owner",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2,
-      "position": [2000, 200],
+      "position": [2440, 300],
       "credentials": {
         "smtp": {
           "id": "1",
@@ -239,7 +229,29 @@
       "main": [
         [
           {
-            "node": "Send Email: Alert",
+            "node": "HTTP: Get Task Owner Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Get Task Owner Email": {
+      "main": [
+        [
+          {
+            "node": "Function: Prepare Email Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function: Prepare Email Data": {
+      "main": [
+        [
+          {
+            "node": "Send Email: Alert to Owner",
             "type": "main",
             "index": 0
           }

@@ -51,14 +51,9 @@
         "authentication": "none",
         "method": "POST",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "contents",
-              "value": "=[{\"parts\":[{\"text\":\"{{$json.prompt}}\"}]}]"
-            }
-          ]
-        },
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": {{JSON.stringify($json.prompt)}}\n        }\n      ]\n    }\n  ]\n}",
         "options": {}
       },
       "name": "HTTP: Gemini API",

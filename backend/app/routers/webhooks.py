@@ -181,23 +181,24 @@ async def get_project_owner_email(project_id: int, db: Session = Depends(get_db)
         "owner_name": owner.full_name or owner.username
     }
 
-@router.get("/task-user-email/{task_id}")
-async def get_task_user_email(task_id: int, db: Session = Depends(get_db)):
+@router.get("/task-owner-email/{task_id}")
+async def get_task_owner_email(task_id: int, db: Session = Depends(get_db)):
     """
-    Lấy email của user được assign cho task.
+    Lấy email của project owner (người sở hữu task).
     
     KHÔNG CẦN XÁC THỰC - Endpoint này chỉ dành cho n8n internal calls.
-    Dùng để n8n có thể gửi email thông báo cho đúng user được assign task.
+    Mỗi task thuộc về một project, và project thuộc về một user.
+    Dùng để n8n gửi email cảnh báo cho chính chủ sở hữu task.
     
     Args:
         task_id: ID của task
         db: Database session
         
     Returns:
-        dict: Thông tin user email, task name và thông tin liên quan
+        dict: Thông tin owner email và task details
         
     Raises:
-        HTTPException 404: Nếu task không tồn tại
+        HTTPException 404: Nếu task hoặc project không tồn tại
     """
     from app.models.task import Task
     from app.models.user import User
@@ -211,38 +212,34 @@ async def get_task_user_email(task_id: int, db: Session = Depends(get_db)):
             detail=f"Task ID {task_id} không tồn tại"
         )
     
-    # Get assigned user
-    user_email = None
-    user_name = None
-    if task.assigned_to:
-        user = db.query(User).filter(User.id == task.assigned_to).first()
-        if user:
-            user_email = user.email
-            user_name = user.full_name or user.username
-    
-    # Get project info
+    # Get project
     project = db.query(Project).filter(Project.id == task.project_id).first()
-    project_name = project.name if project else None
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project ID {task.project_id} không tồn tại"
+        )
     
-    # Get project owner email as fallback
-    owner_email = None
-    if project and project.owner_id:
-        owner = db.query(User).filter(User.id == project.owner_id).first()
-        if owner:
-            owner_email = owner.email
+    # Get project owner (người sở hữu task)
+    owner = db.query(User).filter(User.id == project.owner_id).first()
+    if not owner:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Owner ID {project.owner_id} không tồn tại"
+        )
     
     return {
         "task_id": task_id,
         "task_name": task.name,
         "task_status": task.status.value,
         "task_priority": task.priority.value,
+        "task_progress": task.progress,
+        "task_deadline": str(task.deadline) if task.deadline else None,
         "project_id": task.project_id,
-        "project_name": project_name,
-        "assigned_to": task.assigned_to,
-        "user_email": user_email,  # Email của user được assign
-        "user_name": user_name,
-        "owner_email": owner_email,  # Email của owner project (fallback)
-        "has_assigned_user": task.assigned_to is not None
+        "project_name": project.name,
+        "owner_id": project.owner_id,
+        "owner_email": owner.email,
+        "owner_name": owner.full_name or owner.username
     }
 
 # ============================================================

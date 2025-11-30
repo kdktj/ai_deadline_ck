@@ -19,7 +19,7 @@
     },
     {
       "parameters": {
-        "url": "={{$env.BACKEND_API_URL}}/api/forecasts/latest",
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/forecasts/latest",
         "authentication": "none",
         "options": {}
       },
@@ -30,7 +30,7 @@
     },
     {
       "parameters": {
-        "url": "={{$env.BACKEND_API_URL}}/api/tasks?status=in_progress",
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/tasks",
         "authentication": "none",
         "options": {}
       },
@@ -41,7 +41,7 @@
     },
     {
       "parameters": {
-        "functionCode": "// Build Summary Prompt\nconst forecasts = $node['HTTP: Get Forecast Logs'].json.forecasts || [];\nconst tasks = $input.first().json.tasks || [];\n\nconst highRiskForecasts = forecasts.filter(f => \n  f.risk_level === 'high' || f.risk_level === 'critical'\n);\n\nconst inProgressTasks = tasks.filter(t => t.status === 'in_progress');\nconst doneTasks = tasks.filter(t => t.status === 'done');\n\nconst prompt = `Tạo báo cáo tóm tắt ngắn gọn (3-5 câu) bằng tiếng Việt về tình hình dự án:\n\nDự đoán rủi ro: ${forecasts.length} tasks được phân tích\nTasks đang thực hiện: ${inProgressTasks.length} tasks\n\nChi tiết:\n- Tasks có rủi ro cao: ${highRiskForecasts.length}\n- Tasks đang thực hiện: ${inProgressTasks.length}\n- Tasks hoàn thành: ${doneTasks.length}\n- Tổng tasks: ${tasks.length}\n\nFormat: Văn bản súc tích, dễ hiểu, highlight điểm quan trọng. Sử dụng emoji nếu phù hợp.`;\n\nreturn {\n  json: {\n    prompt: prompt,\n    stats: {\n      total_forecasts: forecasts.length,\n      high_risk_count: highRiskForecasts.length,\n      in_progress_count: inProgressTasks.length,\n      done_count: doneTasks.length,\n      total_tasks: tasks.length\n    }\n  }\n};"
+        "functionCode": "// Build Summary Prompt\nconst forecastsResponse = $node['HTTP: Get Forecast Logs'].json;\nconst tasksResponse = $input.first().json;\n\nconst forecasts = forecastsResponse.forecasts || [];\nconst tasks = tasksResponse.tasks || [];\n\nconst highRiskForecasts = forecasts.filter(f => \n  f.risk_level === 'high' || f.risk_level === 'critical'\n);\n\nconst inProgressTasks = tasks.filter(t => t.status === 'in_progress');\nconst doneTasks = tasks.filter(t => t.status === 'done');\n\nconst prompt = `Tạo báo cáo tóm tắt ngắn gọn (3-5 câu) bằng tiếng Việt về tình hình dự án:\n\nDự đoán rủi ro: ${forecasts.length} tasks được phân tích\nTasks đang thực hiện: ${inProgressTasks.length} tasks\n\nChi tiết:\n- Tasks có rủi ro cao: ${highRiskForecasts.length}\n- Tasks đang thực hiện: ${inProgressTasks.length}\n- Tasks hoàn thành: ${doneTasks.length}\n- Tổng tasks: ${tasks.length}\n\nFormat: Văn bản súc tích, dễ hiểu, highlight điểm quan trọng. Sử dụng emoji nếu phù hợp.`;\n\nreturn {\n  json: {\n    prompt: prompt,\n    stats: {\n      total_forecasts: forecasts.length,\n      high_risk_count: highRiskForecasts.length,\n      in_progress_count: inProgressTasks.length,\n      done_count: doneTasks.length,\n      total_tasks: tasks.length\n    }\n  }\n};"
       },
       "name": "Function: Build Summary Prompt",
       "type": "n8n-nodes-base.function",
@@ -54,14 +54,9 @@
         "authentication": "none",
         "method": "POST",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "contents",
-              "value": "=[{\"parts\":[{\"text\":\"{{$json.prompt}}\"}]}]"
-            }
-          ]
-        },
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": {{JSON.stringify($json.prompt)}}\n        }\n      ]\n    }\n  ]\n}",
         "options": {}
       },
       "name": "HTTP: Gemini API",
