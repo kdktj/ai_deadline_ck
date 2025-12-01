@@ -181,6 +181,45 @@ async def get_project_owner_email(project_id: int, db: Session = Depends(get_db)
         "owner_name": owner.full_name or owner.username
     }
 
+
+@router.get("/user-email/{user_id}")
+async def get_user_email(user_id: int, db: Session = Depends(get_db)):
+    """
+    Lấy email của user theo user_id.
+    
+    KHÔNG CẦN XÁC THỰC - Endpoint này chỉ dành cho n8n internal calls.
+    Dùng để n8n có thể gửi email thông báo cho user theo owner_id.
+    
+    Args:
+        user_id: ID của user
+        db: Database session
+        
+    Returns:
+        dict: Thông tin user email
+        
+    Raises:
+        HTTPException 404: Nếu user không tồn tại
+    """
+    from app.models.user import User
+    
+    # Get user
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User ID {user_id} không tồn tại"
+        )
+    
+    return {
+        "user_id": user_id,
+        "owner_id": user_id,  # Alias for compatibility
+        "owner_email": user.email,
+        "owner_name": user.full_name or user.username,
+        "email": user.email,
+        "full_name": user.full_name or user.username,
+        "username": user.username
+    }
+
 @router.get("/task-owner-email/{task_id}")
 async def get_task_owner_email(task_id: int, db: Session = Depends(get_db)):
     """

@@ -353,14 +353,61 @@ async def create_demo_project(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Tạo dự án mẫu kèm tasks mẫu.
-    
-    Endpoint này được gọi từ n8n Flow 3 khi user mới đăng ký.
-    Tạo 1 dự án với 3-5 tasks mẫu để user khám phá hệ thống.
+    Tạo dự án mẫu kèm tasks mẫu (yêu cầu authentication).
     
     Args:
         db: Database session
         current_user: Người dùng hiện tại
+        
+    Returns:
+        ProjectResponse: Dự án mẫu vừa tạo
+    """
+    return _create_demo_project_for_user(db, current_user.id, current_user.full_name)
+
+
+@router.post("/demo/internal", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+async def create_demo_project_internal(
+    user_id: int = Query(..., description="ID của user cần tạo demo project"),
+    db: Session = Depends(get_db)
+):
+    """
+    Tạo dự án mẫu cho user - endpoint internal cho n8n.
+    
+    Endpoint này được gọi từ n8n Flow 3 khi user mới đăng ký.
+    KHÔNG yêu cầu authentication - chỉ dùng cho internal services.
+    
+    Args:
+        user_id: ID của user
+        db: Database session
+        
+    Returns:
+        ProjectResponse: Dự án mẫu vừa tạo
+        
+    Raises:
+        HTTPException 404: Nếu user không tồn tại
+    """
+    # Verify user exists
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User không tồn tại"
+        )
+    
+    return _create_demo_project_for_user(db, user.id, user.full_name)
+
+
+def _create_demo_project_for_user(db: Session, user_id: int, user_full_name: str) -> ProjectResponse:
+    """
+    Tạo dự án mẫu kèm tasks mẫu.
+    
+    Helper function được gọi từ cả endpoint auth và internal.
+    Tạo 1 dự án với 5 tasks mẫu để user khám phá hệ thống.
+    
+    Args:
+        db: Database session
+        user_id: ID của user
+        user_full_name: Tên đầy đủ của user
         
     Returns:
         ProjectResponse: Dự án mẫu vừa tạo
@@ -372,7 +419,7 @@ async def create_demo_project(
     demo_project = Project(
         name="Dự án mẫu - Khám phá hệ thống",
         description="Đây là dự án mẫu để bạn làm quen với hệ thống AI Deadline Forecasting. Hãy thử cập nhật tiến độ các task và xem dự đoán AI!",
-        owner_id=current_user.id,
+        owner_id=user_id,
         start_date=date.today(),
         end_date=date.today() + timedelta(days=30),
         status=ProjectStatus.ACTIVE
@@ -449,7 +496,7 @@ async def create_demo_project(
         "name": demo_project.name,
         "description": demo_project.description,
         "owner_id": demo_project.owner_id,
-        "owner_name": current_user.full_name,
+        "owner_name": user_full_name,
         "start_date": demo_project.start_date,
         "end_date": demo_project.end_date,
         "status": demo_project.status.value,

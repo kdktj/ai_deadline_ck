@@ -120,8 +120,11 @@ async def trigger_n8n_new_user_webhook(
         token: JWT access token
     """
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            webhook_url = f"{settings.N8N_WEBHOOK_URL}/webhook/n8n/new-user"
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Ensure N8N_WEBHOOK_URL doesn't have trailing slash
+            base_url = settings.N8N_WEBHOOK_URL.rstrip('/')
+            webhook_url = f"{base_url}/webhook/n8n/new-user"
+            
             payload = {
                 "user_id": user_id,
                 "email": email,
@@ -130,12 +133,18 @@ async def trigger_n8n_new_user_webhook(
                 "token": token
             }
             
-            response = await client.post(webhook_url, json={"body": payload})
+            print(f"🔔 Triggering n8n webhook: {webhook_url}")
+            print(f"   Payload: user_id={user_id}, email={email}")
+            
+            # Send payload directly without wrapping in "body"
+            response = await client.post(webhook_url, json=payload)
             
             if response.status_code == 200:
                 print(f"✅ N8N webhook triggered successfully for user {email}")
+                print(f"   Response: {response.text[:200] if response.text else 'empty'}")
             else:
                 print(f"⚠️ N8N webhook failed with status {response.status_code}")
+                print(f"   Response: {response.text[:200] if response.text else 'empty'}")
                 
     except Exception as e:
         # Don't fail registration if webhook fails
