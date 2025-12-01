@@ -1,0 +1,324 @@
+{
+  "name": "Flow 9 - Personal Weekly Review",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [0],
+              "triggerAtHour": 19
+            }
+          ]
+        }
+      },
+      "name": "Cron Trigger (Sunday 7PM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/tasks",
+        "authentication": "none",
+        "options": {}
+      },
+      "name": "HTTP: Get All Tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/forecasts/latest",
+        "authentication": "none",
+        "options": {}
+      },
+      "name": "HTTP: Get Forecasts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Calculate weekly statistics per owner\nconst tasksResponse = $node['HTTP: Get All Tasks'].json;\nconst forecastsResponse = $input.first().json;\n\nconst tasks = tasksResponse.tasks || [];\nconst forecasts = forecastsResponse.forecasts || [];\n\nconst now = new Date();\nconst oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);\nconst nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);\n\n// Group tasks by owner\nconst ownerMap = new Map();\n\nfor (const task of tasks) {\n  const ownerId = task.owner_id;\n  if (!ownerId) continue;\n  \n  if (!ownerMap.has(ownerId)) {\n    ownerMap.set(ownerId, {\n      owner_id: ownerId,\n      owner_name: task.owner_name,\n      // This week stats\n      completed_this_week: [],\n      created_this_week: [],\n      // Current status\n      total_tasks: 0,\n      done_tasks: 0,\n      in_progress_tasks: 0,\n      todo_tasks: 0,\n      overdue_tasks: [],\n      // Next week\n      upcoming_deadlines: [],\n      // Risk assessment\n      high_risk_tasks: []\n    });\n  }\n  \n  const ownerData = ownerMap.get(ownerId);\n  ownerData.total_tasks++;\n  \n  // Count by status\n  if (task.status === 'done') {\n    ownerData.done_tasks++;\n    // Check if completed this week\n    const updatedAt = task.updated_at ? new Date(task.updated_at) : null;\n    if (updatedAt && updatedAt >= oneWeekAgo) {\n      ownerData.completed_this_week.push(task);\n    }\n  } else if (task.status === 'in_progress') {\n    ownerData.in_progress_tasks++;\n  } else {\n    ownerData.todo_tasks++;\n  }\n  \n  // Created this week\n  const createdAt = task.created_at ? new Date(task.created_at) : null;\n  if (createdAt && createdAt >= oneWeekAgo) {\n    ownerData.created_this_week.push(task);\n  }\n  \n  // Check overdue\n  if (task.deadline && task.status !== 'done') {\n    const deadline = new Date(task.deadline);\n    if (deadline < now) {\n      ownerData.overdue_tasks.push(task);\n    } else if (deadline <= nextWeek) {\n      ownerData.upcoming_deadlines.push(task);\n    }\n  }\n  \n  // Check high risk from forecasts\n  const taskForecast = forecasts.find(f => f.task_id === task.id);\n  if (taskForecast && (taskForecast.risk_level === 'high' || taskForecast.risk_level === 'critical')) {\n    ownerData.high_risk_tasks.push({\n      ...task,\n      risk_level: taskForecast.risk_level,\n      risk_percentage: taskForecast.risk_percentage\n    });\n  }\n}\n\n// Filter owners with activity\nconst activeOwners = Array.from(ownerMap.values()).filter(owner => \n  owner.total_tasks > 0\n);\n\nif (activeOwners.length === 0) {\n  return [];\n}\n\nreturn activeOwners.map(owner => ({ json: owner }));"
+      },
+      "name": "Function: Calculate Weekly Stats",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "name": "Split Into Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/project-owner-email/{{$json.owner_id}}",
+        "authentication": "none",
+        "options": {}
+      },
+      "name": "HTTP: Get Owner Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.owner_email}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "IF: Has Email",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Build AI prompt for personalized weekly advice\nconst ownerInfo = $input.first().json;\nconst stats = $node['Split Into Items'].json;\n\nconst completionRate = stats.total_tasks > 0 \n  ? Math.round((stats.done_tasks / stats.total_tasks) * 100) \n  : 0;\n\nconst prompt = `Bạn là trợ lý AI giúp người dùng quản lý deadline CÁ NHÂN.\n\nThống kê tuần của \"${stats.owner_name}\":\n- Tổng tasks: ${stats.total_tasks}\n- Hoàn thành: ${stats.done_tasks} (${completionRate}%)\n- Đang làm: ${stats.in_progress_tasks}\n- Chưa bắt đầu: ${stats.todo_tasks}\n- Quá hạn: ${stats.overdue_tasks.length}\n- Tuần này hoàn thành: ${stats.completed_this_week.length} tasks\n- Tuần này tạo mới: ${stats.created_this_week.length} tasks\n- Deadline tuần tới: ${stats.upcoming_deadlines.length} tasks\n- Tasks rủi ro cao: ${stats.high_risk_tasks.length}\n\nViết báo cáo cá nhân hóa (150-200 từ, tiếng Việt, tone thân thiện động viên):\n1. Đánh giá hiệu suất tuần qua (khen ngợi nếu tốt, động viên nếu chưa tốt)\n2. Điểm cần cải thiện (nếu có overdue hoặc high risk)\n3. Gợi ý cụ thể cho tuần tới (3-4 điểm ngắn gọn)\n\nKhông sử dụng tone nghiêm khắc. Đây là công cụ CÁ NHÂN, hãy viết như một người bạn đang hỗ trợ.`;\n\nreturn {\n  json: {\n    prompt: prompt,\n    owner_email: ownerInfo.owner_email,\n    owner_name: stats.owner_name,\n    stats: stats,\n    completion_rate: completionRate\n  }\n};"
+      },
+      "name": "Function: Build AI Prompt",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={{$env.GEMINI_API_KEY}}",
+        "authentication": "none",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": {{JSON.stringify($json.prompt)}}\n        }\n      ]\n    }\n  ]\n}",
+        "options": {
+          "retry": {
+            "values": {
+              "maxTries": 3,
+              "retryOnStatusCodes": {
+                "values": [
+                  {
+                    "statusCode": "429,500,502,503,504"
+                  }
+                ]
+              },
+              "waitBetweenTries": 2000
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "HTTP: Gemini API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Parse AI response and prepare email\nconst response = $input.first().json;\nconst previousData = $node['Function: Build AI Prompt'].json;\n\nlet aiAdvice = 'Chúc bạn một tuần mới hiệu quả!';\n\ntry {\n  const text = response.candidates[0].content.parts[0].text;\n  aiAdvice = text.trim();\n} catch (error) {\n  console.log('Error parsing AI response:', error);\n}\n\nconst stats = previousData.stats;\n\n// Build task lists as HTML\nconst formatTaskList = (tasks, max = 5) => {\n  if (!tasks || tasks.length === 0) return '<li style=\"color: #888;\">Không có</li>';\n  return tasks.slice(0, max).map(t => \n    `<li><strong>${t.name}</strong> - ${t.status === 'done' ? '✅' : t.progress + '%'}</li>`\n  ).join('') + (tasks.length > max ? `<li style=\"color: #888;\">...và ${tasks.length - max} tasks khác</li>` : '');\n};\n\nreturn {\n  json: {\n    owner_email: previousData.owner_email,\n    owner_name: previousData.owner_name,\n    completion_rate: previousData.completion_rate,\n    ai_advice: aiAdvice,\n    total_tasks: stats.total_tasks,\n    done_tasks: stats.done_tasks,\n    in_progress_tasks: stats.in_progress_tasks,\n    todo_tasks: stats.todo_tasks,\n    overdue_count: stats.overdue_tasks.length,\n    upcoming_count: stats.upcoming_deadlines.length,\n    completed_this_week: stats.completed_this_week.length,\n    created_this_week: stats.created_this_week.length,\n    high_risk_count: stats.high_risk_tasks.length,\n    completed_html: formatTaskList(stats.completed_this_week),\n    upcoming_html: formatTaskList(stats.upcoming_deadlines),\n    overdue_html: formatTaskList(stats.overdue_tasks)\n  }\n};"
+      },
+      "name": "Function: Parse AI Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.EMAIL_FROM}}",
+        "toEmail": "={{$json.owner_email}}",
+        "subject": "📊 Báo cáo tuần của bạn - Hoàn thành {{$json.completion_rate}}%",
+        "emailType": "html",
+        "text": "=Xin chào {{$json.owner_name}}!\n\nĐây là báo cáo tuần CÁ NHÂN của bạn:\n\n📈 THỐNG KÊ TỔNG QUAN:\n- Tỷ lệ hoàn thành: {{$json.completion_rate}}%\n- Tổng tasks: {{$json.total_tasks}}\n- Hoàn thành: {{$json.done_tasks}}\n- Đang làm: {{$json.in_progress_tasks}}\n- Chưa bắt đầu: {{$json.todo_tasks}}\n\n📅 TUẦN NÀY:\n- Hoàn thành: {{$json.completed_this_week}} tasks\n- Tạo mới: {{$json.created_this_week}} tasks\n\n⚠️ CẦN CHÚ Ý:\n- Quá hạn: {{$json.overdue_count}} tasks\n- Deadline tuần tới: {{$json.upcoming_count}} tasks\n- Rủi ro cao: {{$json.high_risk_count}} tasks\n\n🤖 GỢI Ý TỪ AI:\n{{$json.ai_advice}}\n\nChúc bạn một tuần mới hiệu quả! 💪\n\n---\nEmail tự động từ AI Deadline - Công cụ quản lý deadline CÁ NHÂN của bạn",
+        "html": "=<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 650px; margin: 0 auto; padding: 20px; }\n    .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }\n    .content { background: #f9f9f9; padding: 25px; }\n    .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 20px 0; }\n    .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; }\n    .stat-value { font-size: 32px; font-weight: bold; }\n    .stat-label { font-size: 12px; color: #666; margin-top: 5px; }\n    .progress-bar { background: #e5e7eb; border-radius: 10px; height: 20px; overflow: hidden; margin: 10px 0; }\n    .progress-fill { background: linear-gradient(90deg, #10b981 0%, #059669 100%); height: 100%; transition: width 0.3s; }\n    .section { background: white; border-radius: 10px; padding: 20px; margin: 15px 0; }\n    .section-title { font-weight: bold; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }\n    .ai-box { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 10px; padding: 20px; margin: 20px 0; }\n    .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; background: #f9f9f9; border-radius: 0 0 10px 10px; }\n    ul { margin: 0; padding-left: 20px; }\n    li { margin: 5px 0; }\n  </style>\n</head>\n<body>\n  <div class='container'>\n    <div class='header'>\n      <h1>📊 Báo cáo Tuần của Bạn</h1>\n      <p style='margin: 0; opacity: 0.9;'>Xin chào {{$json.owner_name}}! Đây là tổng kết tuần của bạn</p>\n    </div>\n    <div class='content'>\n      \n      <!-- Completion Rate -->\n      <div class='section'>\n        <div class='section-title'>🎯 Tỷ lệ hoàn thành</div>\n        <div class='progress-bar'>\n          <div class='progress-fill' style='width: {{$json.completion_rate}}%;'></div>\n        </div>\n        <div style='text-align: center; font-size: 24px; font-weight: bold; color: #10b981;'>\n          {{$json.completion_rate}}%\n        </div>\n      </div>\n      \n      <!-- Stats Grid -->\n      <div class='stats-grid'>\n        <div class='stat-card'>\n          <div class='stat-value' style='color: #10b981;'>{{$json.done_tasks}}</div>\n          <div class='stat-label'>✅ Hoàn thành</div>\n        </div>\n        <div class='stat-card'>\n          <div class='stat-value' style='color: #3b82f6;'>{{$json.in_progress_tasks}}</div>\n          <div class='stat-label'>🔵 Đang làm</div>\n        </div>\n        <div class='stat-card'>\n          <div class='stat-value' style='color: #9ca3af;'>{{$json.todo_tasks}}</div>\n          <div class='stat-label'>⚪ Chưa bắt đầu</div>\n        </div>\n        <div class='stat-card'>\n          <div class='stat-value' style='color: #ef4444;'>{{$json.overdue_count}}</div>\n          <div class='stat-label'>🔴 Quá hạn</div>\n        </div>\n      </div>\n      \n      <!-- This Week Summary -->\n      <div class='section'>\n        <div class='section-title'>📅 Tuần này</div>\n        <p>✅ Hoàn thành <strong>{{$json.completed_this_week}}</strong> tasks</p>\n        <p>➕ Tạo mới <strong>{{$json.created_this_week}}</strong> tasks</p>\n      </div>\n      \n      <!-- Upcoming Deadlines -->\n      <div class='section'>\n        <div class='section-title'>🗓️ Deadline tuần tới ({{$json.upcoming_count}})</div>\n        <ul>{{$json.upcoming_html}}</ul>\n      </div>\n      \n      {{#if $json.overdue_count}}\n      <div class='section' style='border-left: 4px solid #ef4444;'>\n        <div class='section-title'>⚠️ Tasks quá hạn ({{$json.overdue_count}})</div>\n        <ul>{{$json.overdue_html}}</ul>\n      </div>\n      {{/if}}\n      \n      <!-- AI Advice -->\n      <div class='ai-box'>\n        <div style='font-weight: bold; margin-bottom: 10px;'>🤖 Gợi ý từ AI</div>\n        <p style='white-space: pre-wrap; margin: 0;'>{{$json.ai_advice}}</p>\n      </div>\n      \n      <div style='text-align: center; margin-top: 25px;'>\n        <a href='http://localhost:5173/dashboard' style='display: inline-block; background: #10b981; color: white; padding: 14px 35px; text-decoration: none; border-radius: 25px; font-weight: bold;'>\n          Xem Dashboard của bạn →\n        </a>\n      </div>\n      \n      <p style='text-align: center; margin-top: 20px; color: #666;'>\n        💪 Chúc bạn một tuần mới hiệu quả!\n      </p>\n    </div>\n    <div class='footer'>\n      <p>Email tự động từ <strong>AI Deadline Forecasting Agent</strong></p>\n      <p><em>Công cụ quản lý deadline CÁ NHÂN của bạn</em></p>\n    </div>\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "name": "Send Email: Weekly Review",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [2440, 300],
+      "credentials": {
+        "smtp": {
+          "id": "1",
+          "name": "SMTP Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/automation-log",
+        "authentication": "none",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "workflow_name",
+              "value": "Personal Weekly Review"
+            },
+            {
+              "name": "status",
+              "value": "success"
+            },
+            {
+              "name": "input_data",
+              "value": "={{JSON.stringify({owner_email: $json.owner_email})}}"
+            },
+            {
+              "name": "output_data",
+              "value": "={{JSON.stringify({completion_rate: $json.completion_rate, done: $json.done_tasks, total: $json.total_tasks})}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "HTTP: Log to Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [2660, 300]
+    }
+  ],
+  "connections": {
+    "Cron Trigger (Sunday 7PM)": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Get All Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Get All Tasks": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Get Forecasts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Get Forecasts": {
+      "main": [
+        [
+          {
+            "node": "Function: Calculate Weekly Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function: Calculate Weekly Stats": {
+      "main": [
+        [
+          {
+            "node": "Split Into Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Into Items": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Get Owner Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Get Owner Email": {
+      "main": [
+        [
+          {
+            "node": "IF: Has Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Has Email": {
+      "main": [
+        [
+          {
+            "node": "Function: Build AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function: Build AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Gemini API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Gemini API": {
+      "main": [
+        [
+          {
+            "node": "Function: Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function: Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Send Email: Weekly Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email: Weekly Review": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Log to Backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "9",
+  "id": "9",
+  "meta": {
+    "instanceId": "ai_deadline_n8n"
+  },
+  "tags": []
+}

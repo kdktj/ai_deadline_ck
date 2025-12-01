@@ -1,9 +1,10 @@
 """
 Authentication router - handles user registration, login, logout, and profile endpoints.
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from datetime import timedelta
+import httpx
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.schemas.auth import UserCreate, UserLogin, Token, UserResponse, MessageResponse
@@ -14,19 +15,26 @@ from app.utils.auth import (
     get_current_user,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
+from app.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(user_data: UserCreate, db: Session = Depends(get_db)):
+async def register(
+    user_data: UserCreate, 
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
     """
     Đăng ký tài khoản mới.
     
     Tạo một tài khoản người dùng mới với email và username duy nhất.
     Mật khẩu sẽ được mã hóa trước khi lưu vào database.
+    Tự động gọi n8n webhook để gửi email chào mừng.
     
     Args:
         user_data: Thông tin đăng ký (email, username, password, full_name)
+        background_tasks: FastAPI background tasks
         db: Database session
         
     Returns:
@@ -65,7 +73,74 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
     
+    # Create access token for the new user
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={
+            "user_id": new_user.id,
+            "username": new_user.username,
+            "role": new_user.role.value
+        },
+        expires_delta=access_token_expires
+    )
+    
+    # Trigger n8n webhook in background (Flow 3 - User Registration)
+    background_tasks.add_task(
+        trigger_n8n_new_user_webhook,
+        user_id=new_user.id,
+        email=new_user.email,
+        username=new_user.username,
+        full_name=new_user.full_name or new_user.username,
+        token=access_token
+    )
+    
     return new_user
+
+
+async def trigger_n8n_new_user_webhook(
+    user_id: int,
+    email: str,
+    username: str,
+    full_name: str,
+    token: str
+):
+    """
+    Gọi n8n webhook để trigger Flow 3 (User Registration Automation).
+    
+    Webhook này sẽ kích hoạt quy trình:
+    1. Gửi email chào mừng cho user mới
+    2. Tạo demo project tự động
+    3. Log automation execution
+    
+    Args:
+        user_id: ID của user mới
+        email: Email của user
+        username: Username
+        full_name: Tên đầy đủ
+        token: JWT access token
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            webhook_url = f"{settings.N8N_WEBHOOK_URL}/webhook/n8n/new-user"
+            payload = {
+                "user_id": user_id,
+                "email": email,
+                "username": username,
+                "full_name": full_name,
+                "token": token
+            }
+            
+            response = await client.post(webhook_url, json={"body": payload})
+            
+            if response.status_code == 200:
+                print(f"✅ N8N webhook triggered successfully for user {email}")
+            else:
+                print(f"⚠️ N8N webhook failed with status {response.status_code}")
+                
+    except Exception as e:
+        # Don't fail registration if webhook fails
+        print(f"❌ Error triggering N8N webhook: {str(e)}")
+        print(f"   User {email} registered successfully but welcome email may not be sent")
 
 @router.post("/login", response_model=Token)
 async def login(login_data: UserLogin, db: Session = Depends(get_db)):

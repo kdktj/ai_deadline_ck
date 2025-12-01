@@ -54,7 +54,22 @@
         "contentType": "json",
         "specifyBody": "json",
         "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": {{JSON.stringify($json.prompt)}}\n        }\n      ]\n    }\n  ]\n}",
-        "options": {}
+        "options": {
+          "retry": {
+            "values": {
+              "maxTries": 3,
+              "retryOnStatusCodes": {
+                "values": [
+                  {
+                    "statusCode": "429,500,502,503,504"
+                  }
+                ]
+              },
+              "waitBetweenTries": 2000
+            }
+          },
+          "timeout": 60000
+        }
       },
       "name": "HTTP: Gemini API",
       "type": "n8n-nodes-base.httpRequest",
