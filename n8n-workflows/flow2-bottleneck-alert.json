@@ -30,135 +30,32 @@
     },
     {
       "parameters": {
-        "functionCode": "// Filter stale tasks (no progress update in last 2 minutes)\nconst response = $input.first().json;\nconst tasks = response.tasks || [];\nconst staleTasks = [];\nconst now = new Date();\nconst twoMinutesAgo = new Date(now - 2 * 60 * 1000);\n\nfor (const t of tasks) {\n  // Only check in_progress tasks\n  if (t.status !== 'in_progress') continue;\n  \n  // Check if last_progress_update is older than 2 minutes\n  if (t.last_progress_update) {\n    const lastUpdate = new Date(t.last_progress_update);\n    if (lastUpdate < twoMinutesAgo) {\n      staleTasks.push({\n        id: t.id,\n        name: t.name,\n        progress: t.progress || 0,\n        deadline: t.deadline,\n        status: t.status,\n        priority: t.priority,\n        last_progress_update: t.last_progress_update,\n        project_id: t.project_id,\n        project_name: t.project_name,\n        owner_name: t.owner_name\n      });\n    }\n  } else {\n    // If no last_progress_update, consider it stale\n    staleTasks.push({\n      id: t.id,\n      name: t.name,\n      progress: t.progress || 0,\n      deadline: t.deadline,\n      status: t.status,\n      priority: t.priority,\n      last_progress_update: 'Never',\n      project_id: t.project_id,\n      project_name: t.project_name,\n      owner_name: t.owner_name\n    });\n  }\n}\n\nif (staleTasks.length === 0) {\n  return [];\n}\n\nreturn {\n  json: {\n    staleTasks: staleTasks,\n    count: staleTasks.length\n  }\n};"
+        "functionCode": "// Filter stale tasks (no progress update in last 2 minutes)\n// Group by owner_id to send personalized emails\nconst response = $input.first().json;\nconst tasks = response.tasks || [];\nconst now = new Date();\nconst twoMinutesAgo = new Date(now - 2 * 60 * 1000);\n\n// Group stale tasks by owner_id\nconst ownerTasksMap = new Map();\n\nfor (const t of tasks) {\n  // Only check in_progress tasks\n  if (t.status !== 'in_progress') continue;\n  \n  let isStale = false;\n  \n  // Check if last_progress_update is older than 2 minutes\n  if (t.last_progress_update) {\n    const lastUpdate = new Date(t.last_progress_update);\n    if (lastUpdate < twoMinutesAgo) {\n      isStale = true;\n    }\n  } else {\n    // If no last_progress_update, consider it stale\n    isStale = true;\n  }\n  \n  if (isStale && t.owner_id) {\n    if (!ownerTasksMap.has(t.owner_id)) {\n      ownerTasksMap.set(t.owner_id, {\n        owner_id: t.owner_id,\n        owner_name: t.owner_name || 'User',\n        tasks: []\n      });\n    }\n    \n    ownerTasksMap.get(t.owner_id).tasks.push({\n      id: t.id,\n      name: t.name,\n      progress: t.progress || 0,\n      deadline: t.deadline,\n      status: t.status,\n      priority: t.priority,\n      last_progress_update: t.last_progress_update || 'Never',\n      project_id: t.project_id,\n      project_name: t.project_name\n    });\n  }\n}\n\nif (ownerTasksMap.size === 0) {\n  return [];\n}\n\n// Return each owner's data as separate item for parallel processing\nconst ownerDataArray = Array.from(ownerTasksMap.values());\nreturn ownerDataArray.map(ownerData => ({ json: ownerData }));"
       },
-      "name": "Function: Filter Stale Tasks",
+      "name": "Function: Filter and Group by Owner",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
       "position": [680, 300]
     },
     {
       "parameters": {
-        "conditions": {
-          "number": [
-            {
-              "value1": "={{$json.count}}",
-              "operation": "larger",
-              "value2": 0
-            }
-          ]
-        }
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/user-email/{{$json.owner_id}}",
+        "authentication": "none",
+        "options": {}
       },
-      "name": "IF: Has Stale Tasks",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
+      "name": "HTTP: Get Owner Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
       "position": [900, 300]
     },
     {
       "parameters": {
-        "functionCode": "// Prepare Gemini prompt for bottleneck analysis\n// Nhấn mạnh: Đây là tasks CÁ NHÂN, không phải team collaboration\nconst staleTasks = $json.staleTasks;\n\nconst prompt = `Bạn đang hỗ trợ một công cụ quản lý deadline CÁ NHÂN.\n\nCác task sau đây KHÔNG được cập nhật tiến độ trong >2 phút.\nĐây là tasks CÁ NHÂN của từng user - họ cần được nhắc nhở một cách thân thiện:\n\n${JSON.stringify(staleTasks, null, 2)}\n\nPhân tích bằng tiếng Việt với tone thân thiện, hỗ trợ (KHÔNG dùng tone cảnh báo nghiêm khắc):\n\n1. **Nguyên nhân khả dĩ:** Tại sao task có thể bị \"quên\" cập nhật?\n   - Có thể do bận công việc khác\n   - Có thể gặp khó khăn kỹ thuật\n   - Có thể đang chờ thông tin từ bên ngoài\n\n2. **Tác động cá nhân:** Việc không cập nhật ảnh hưởng gì đến deadline của chính họ?\n\n3. **Gợi ý hỗ trợ:** (3-5 điểm cụ thể, tone động viên)\n   - Chia nhỏ task nếu quá lớn\n   - Ghi chú vướng mắc để giải quyết sau\n   - Cập nhật tiến độ ngay cả khi nhỏ\n   - ...\n\nLưu ý: Đây là CÔNG CỤ CÁ NHÂN, không phải quản lý team. Hãy viết như một trợ lý AI thân thiện đang nhắc nhở chủ nhân về công việc của chính họ.\n\nTrả lời ngắn gọn (200-300 từ), súc tích, dễ hiểu, tone tích cực.`;\n\nreturn {\n  json: {\n    prompt: prompt,\n    staleTasks: staleTasks\n  }\n};"
+        "functionCode": "// Merge owner email with task data\nconst emailData = $input.first().json;\nconst ownerTaskData = $node['Function: Filter and Group by Owner'].json;\n\n// Build HTML list of stale tasks\nlet tasksHtml = '';\nfor (const task of ownerTaskData.tasks) {\n  tasksHtml += '<li><strong>' + task.name + '</strong> - Tiến độ: ' + (task.progress || 0) + '% - Dự án: ' + (task.project_name || 'N/A') + '</li>';\n}\n\nreturn {\n  json: {\n    owner_email: emailData.owner_email,\n    owner_name: emailData.owner_name || ownerTaskData.owner_name,\n    task_count: ownerTaskData.tasks.length,\n    tasks: ownerTaskData.tasks,\n    tasks_html: tasksHtml,\n    project_name: ownerTaskData.tasks[0]?.project_name || 'Các dự án'\n  }\n};"
       },
-      "name": "Function: Prepare Gemini Prompt",
+      "name": "Function: Prepare Email Data",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1120, 200]
-    },
-    {
-      "parameters": {
-        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={{$env.GEMINI_API_KEY}}",
-        "authentication": "none",
-        "method": "POST",
-        "sendBody": true,
-        "contentType": "json",
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": {{JSON.stringify($json.prompt)}}\n        }\n      ]\n    }\n  ]\n}",
-        "options": {}
-      },
-      "name": "HTTP: Gemini API",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [1340, 200]
-    },
-    {
-      "parameters": {
-        "functionCode": "// Parse AI analysis\nconst response = $input.first().json;\nlet analysis = 'Không thể phân tích bottleneck';\n\ntry {\n  const text = response.candidates[0].content.parts[0].text;\n  analysis = text;\n} catch (error) {\n  console.log('Error parsing AI response:', error);\n}\n\nreturn {\n  json: {\n    analysis: analysis,\n    staleTasks: $node['Function: Prepare Gemini Prompt'].json.staleTasks\n  }\n};"
-      },
-      "name": "Function: Parse AI Analysis",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
-      "position": [1560, 200]
-    },
-    {
-      "parameters": {
-        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/automation-log",
-        "authentication": "none",
-        "method": "POST",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "workflow_name",
-              "value": "Bottleneck Alert"
-            },
-            {
-              "name": "status",
-              "value": "success"
-            },
-            {
-              "name": "input_data",
-              "value": "={{JSON.stringify($json.staleTasks)}}"
-            },
-            {
-              "name": "output_data",
-              "value": "={{JSON.stringify({analysis: $json.analysis})}}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "name": "HTTP: Log to Backend",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [1780, 200]
-    },
-    {
-      "parameters": {
-        "functionCode": "// Prepare email recipients - group tasks by project owner\n// Mỗi owner chỉ nhận email về tasks CÁ NHÂN của mình\nconst staleTasks = $node['Function: Parse AI Analysis'].json.staleTasks;\nconst analysis = $node['Function: Parse AI Analysis'].json.analysis;\n\n// Group tasks by owner (mỗi owner chỉ quản lý tasks của mình)\nconst ownerMap = new Map();\n\nfor (const task of staleTasks) {\n  const ownerId = task.project_id; // Sử dụng project_id để group\n  \n  if (!ownerMap.has(ownerId)) {\n    ownerMap.set(ownerId, {\n      project_id: task.project_id,\n      project_name: task.project_name,\n      owner_name: task.owner_name,\n      tasks: []\n    });\n  }\n  ownerMap.get(ownerId).tasks.push(task);\n}\n\nconst projectDetails = Array.from(ownerMap.values());\n\n// CHỈ return data cho owner emails (KHÔNG có admin email)\n// Lý do: Đây là công cụ quản lý deadline CÁ NHÂN, không phải team tool\nreturn {\n  json: {\n    projectDetails: projectDetails,\n    staleTasks: staleTasks,\n    analysis: analysis\n  }\n};"
-      },
-      "name": "Function: Prepare Email Recipients",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
-      "position": [2000, 200]
-    },
-    {
-      "parameters": {
-        "functionCode": "// Extract project details array for iteration\nconst projectDetails = $json.projectDetails;\n\n// Return each project as separate item for Split Into Items node\nreturn projectDetails.map(pd => ({\n  json: {\n    project_id: pd.project_id,\n    project_name: pd.project_name,\n    owner_name: pd.owner_name,\n    tasks: pd.tasks,\n    analysis: $json.analysis,\n    adminEmail: $json.adminEmail\n  }\n}));"
-      },
-      "name": "Function: Extract Projects for Loop",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
-      "position": [2000, 100]
-    },
-    {
-      "parameters": {
-        "batchSize": 1,
-        "options": {}
-      },
-      "name": "Split Into Items",
-      "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 1,
-      "position": [2220, 200]
-    },
-    {
-      "parameters": {
-        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/project-owner-email/{{$json.project_id}}",
-        "authentication": "none",
-        "options": {}
-      },
-      "name": "HTTP: Get Project Owner Email",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [2440, 200]
+      "position": [1120, 300]
     },
     {
       "parameters": {
@@ -174,16 +71,7 @@
       "name": "IF: Has Owner Email",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [2660, 200]
-    },
-    {
-      "parameters": {
-        "functionCode": "// Format tasks list as HTML for email\nconst ownerData = $input.first().json;\nconst previousNode = $node['Split Into Items'].json;\n\n// Get tasks for this project from the earlier node\nconst tasks = previousNode.tasks || [];\n\n// Build HTML list of tasks\nlet tasksHtml = '';\nfor (const task of tasks) {\n  tasksHtml += `<li><strong>${task.name}</strong> - Tiến độ: ${task.progress || 0}%</li>`;\n}\n\nreturn {\n  json: {\n    owner_email: ownerData.owner_email,\n    owner_name: ownerData.owner_name,\n    project_name: ownerData.project_name,\n    project_id: ownerData.project_id,\n    task_count: tasks.length,\n    tasks_html: tasksHtml\n  }\n};"
-      },
-      "name": "Function: Format Email Data",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
-      "position": [2880, 200]
+      "position": [1340, 300]
     },
     {
       "parameters": {
@@ -191,19 +79,36 @@
         "toEmail": "={{$json.owner_email}}",
         "subject": "⏰ Nhắc nhở cá nhân: Tasks của bạn cần cập nhật tiến độ",
         "emailType": "html",
-        "message": "=<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; background: #f9f9f9; }\n    .header { background: #3b82f6; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }\n    .content { background: white; padding: 30px; border-radius: 0 0 5px 5px; }\n    .alert-box { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 15px 0; }\n    .info-box { background: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 15px; margin: 15px 0; }\n    .task-list { background: #f9fafb; padding: 15px; border-radius: 5px; margin: 10px 0; }\n  </style>\n</head>\n<body>\n  <div class='container'>\n    <div class='header'>\n      <h2>⏰ NHẮC NHỞ CẬP NHẬT TASKS CÁ NHÂN</h2>\n    </div>\n    <div class='content'>\n      <p>Xin chào <strong>{{$json.owner_name}}</strong>,</p>\n      <p>Hệ thống phát hiện các <strong>tasks CÁ NHÂN</strong> của bạn trong dự án <strong>{{$json.project_name}}</strong> chưa được cập nhật tiến độ trong 2 phút qua.</p>\n      \n      <div class='alert-box'>\n        <h3>📋 Tasks của bạn cần chú ý</h3>\n        <ul>\n          <li><strong>Dự án:</strong> {{$json.project_name}}</li>\n          <li><strong>Số lượng tasks:</strong> {{$json.task_count}}</li>\n        </ul>\n        \n        <div class='task-list'>\n          <strong>Danh sách tasks:</strong>\n          <ul>\n            {{$json.tasks_html}}\n          </ul>\n        </div>\n      </div>\n      \n      <div class='info-box'>\n        <h3>💡 Gợi ý hành động</h3>\n        <p>Vui lòng:</p>\n        <ul>\n          <li>✅ Cập nhật tiến độ các tasks của bạn</li>\n          <li>🔍 Kiểm tra xem có vướng mắc nào cần giải quyết</li>\n          <li>⏰ Điều chỉnh deadline nếu thực sự cần thiết</li>\n          <li>📝 Ghi chú những khó khăn đang gặp phải</li>\n        </ul>\n        <p><em>💪 Đây là tasks CÁ NHÂN của bạn - bạn là người duy nhất quản lý chúng. Hãy cập nhật để theo dõi tiến độ tốt hơn!</em></p>\n      </div>\n      \n      <p style='margin-top: 30px; text-align: center;'>\n        <a href='http://localhost:5173/projects/{{$json.project_id}}' style='display: inline-block; background: #3b82f6; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;'>\n          Cập nhật Tasks ngay →\n        </a>\n      </p>\n      \n      <p style='color: #666; font-size: 12px; margin-top: 30px; text-align: center;'>\n        <em>Email nhắc nhở tự động từ hệ thống AI Deadline Forecasting Agent</em><br>\n        <em>Công cụ quản lý deadline cá nhân của bạn</em>\n      </p>\n    </div>\n  </div>\n</body>\n</html>",
+        "text": "=Xin chào {{$json.owner_name}},\n\nHệ thống phát hiện các tasks CÁ NHÂN của bạn chưa được cập nhật tiến độ trong 2 phút qua.\n\n📋 Tasks của bạn cần chú ý ({{$json.task_count}} tasks):\n\n💡 Gợi ý hành động:\n✅ Cập nhật tiến độ các tasks của bạn\n🔍 Kiểm tra xem có vướng mắc nào cần giải quyết\n⏰ Điều chỉnh deadline nếu thực sự cần thiết\n�� Ghi chú những khó khăn đang gặp phải\n\nCập nhật Tasks ngay: http://localhost:5173/tasks\n\n---\nEmail nhắc nhở tự động từ hệ thống AI Deadline Forecasting Agent",
+        "html": "=<html><head><style>body{font-family:Arial,sans-serif;line-height:1.6;color:#333}.container{max-width:600px;margin:0 auto;padding:20px;background:#f9f9f9}.header{background:#3b82f6;color:white;padding:20px;text-align:center;border-radius:5px 5px 0 0}.content{background:white;padding:30px;border-radius:0 0 5px 5px}.alert-box{background:#fef3c7;border-left:4px solid #f59e0b;padding:15px;margin:15px 0}.info-box{background:#f0f9ff;border-left:4px solid #0ea5e9;padding:15px;margin:15px 0}.task-list{background:#f9fafb;padding:15px;border-radius:5px;margin:10px 0}</style></head><body><div class='container'><div class='header'><h2>⏰ NHẮC NHỞ CẬP NHẬT TASKS CÁ NHÂN</h2></div><div class='content'><p>Xin chào <strong>{{$json.owner_name}}</strong>,</p><p>Hệ thống phát hiện các <strong>tasks CÁ NHÂN</strong> của bạn chưa được cập nhật tiến độ trong 2 phút qua.</p><div class='alert-box'><h3>📋 Tasks của bạn cần chú ý</h3><p><strong>Số lượng tasks:</strong> {{$json.task_count}}</p><div class='task-list'><strong>Danh sách tasks:</strong><ul>{{$json.tasks_html}}</ul></div></div><div class='info-box'><h3>💡 Gợi ý hành động</h3><ul><li>✅ Cập nhật tiến độ các tasks của bạn</li><li>🔍 Kiểm tra xem có vướng mắc nào cần giải quyết</li><li>⏰ Điều chỉnh deadline nếu thực sự cần thiết</li><li>📝 Ghi chú những khó khăn đang gặp phải</li></ul><p><em>💪 Đây là tasks CÁ NHÂN của bạn - bạn là người duy nhất quản lý chúng!</em></p></div><p style='margin-top:30px;text-align:center'><a href='http://localhost:5173/tasks' style='display:inline-block;background:#3b82f6;color:white;padding:12px 30px;text-decoration:none;border-radius:5px;font-weight:bold'>Cập nhật Tasks ngay</a></p><p style='color:#666;font-size:12px;margin-top:30px;text-align:center'><em>Email nhắc nhở tự động từ hệ thống AI Deadline Forecasting Agent</em><br><em>Công cụ quản lý deadline cá nhân của bạn</em></p></div></div></body></html>",
         "options": {}
       },
-      "name": "Send Email: Alert to Project Owner",
+      "name": "Send Email: Alert to Owner",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2,
-      "position": [2880, 100],
+      "position": [1560, 300],
       "credentials": {
         "smtp": {
           "id": "1",
           "name": "SMTP Account"
         }
       }
+    },
+    {
+      "parameters": {
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/automation-log",
+        "authentication": "none",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflow_name\": \"Bottleneck Alert\",\n  \"status\": \"success\",\n  \"input_data\": {{JSON.stringify({owner_email: $json.owner_email, task_count: $json.task_count})}},\n  \"output_data\": {{JSON.stringify({email_sent: true})}}\n}",
+        "options": {}
+      },
+      "name": "HTTP: Log to Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1780, 300]
     }
   ],
   "connections": {
@@ -222,113 +127,36 @@
       "main": [
         [
           {
-            "node": "Function: Filter Stale Tasks",
+            "node": "Function: Filter and Group by Owner",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Function: Filter Stale Tasks": {
+    "Function: Filter and Group by Owner": {
       "main": [
         [
           {
-            "node": "IF: Has Stale Tasks",
+            "node": "HTTP: Get Owner Email",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "IF: Has Stale Tasks": {
+    "HTTP: Get Owner Email": {
       "main": [
         [
           {
-            "node": "Function: Prepare Gemini Prompt",
+            "node": "Function: Prepare Email Data",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Function: Prepare Gemini Prompt": {
-      "main": [
-        [
-          {
-            "node": "HTTP: Gemini API",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HTTP: Gemini API": {
-      "main": [
-        [
-          {
-            "node": "Function: Parse AI Analysis",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Function: Parse AI Analysis": {
-      "main": [
-        [
-          {
-            "node": "HTTP: Log to Backend",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HTTP: Log to Backend": {
-      "main": [
-        [
-          {
-            "node": "Function: Prepare Email Recipients",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Function: Prepare Email Recipients": {
-      "main": [
-        [
-          {
-            "node": "Function: Extract Projects for Loop",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Function: Extract Projects for Loop": {
-      "main": [
-        [
-          {
-            "node": "Split Into Items",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Split Into Items": {
-      "main": [
-        [
-          {
-            "node": "HTTP: Get Project Owner Email",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HTTP: Get Project Owner Email": {
+    "Function: Prepare Email Data": {
       "main": [
         [
           {
@@ -343,18 +171,18 @@
       "main": [
         [
           {
-            "node": "Function: Format Email Data",
+            "node": "Send Email: Alert to Owner",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Function: Format Email Data": {
+    "Send Email: Alert to Owner": {
       "main": [
         [
           {
-            "node": "Send Email: Alert to Project Owner",
+            "node": "HTTP: Log to Backend",
             "type": "main",
             "index": 0
           }

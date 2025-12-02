@@ -1,0 +1,239 @@
+{
+  "name": "Flow 7 - Personal Daily Digest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "name": "Cron Trigger (Daily 8AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/tasks",
+        "authentication": "none",
+        "options": {}
+      },
+      "name": "HTTP: Get All Tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Group tasks by owner for personal digest\nconst response = $input.first().json;\nconst tasks = response.tasks || [];\nconst now = new Date();\nconst today = new Date(now.getFullYear(), now.getMonth(), now.getDate());\nconst tomorrow = new Date(today);\ntomorrow.setDate(tomorrow.getDate() + 1);\nconst in3Days = new Date(today);\nin3Days.setDate(in3Days.getDate() + 3);\nconst in7Days = new Date(today);\nin7Days.setDate(in7Days.getDate() + 7);\n\n// Group tasks by owner_id\nconst ownerMap = new Map();\n\nfor (const task of tasks) {\n  // Skip completed tasks\n  if (task.status === 'done') continue;\n  \n  const ownerId = task.owner_id;\n  if (!ownerId) continue;\n  \n  if (!ownerMap.has(ownerId)) {\n    ownerMap.set(ownerId, {\n      owner_id: ownerId,\n      owner_name: task.owner_name,\n      overdue: [],\n      today: [],\n      upcoming_3days: [],\n      upcoming_week: [],\n      in_progress: []\n    });\n  }\n  \n  const ownerData = ownerMap.get(ownerId);\n  const deadline = task.deadline ? new Date(task.deadline) : null;\n  \n  // Categorize task\n  if (task.status === 'in_progress') {\n    ownerData.in_progress.push(task);\n  }\n  \n  if (deadline) {\n    if (deadline < today) {\n      ownerData.overdue.push(task);\n    } else if (deadline >= today && deadline < tomorrow) {\n      ownerData.today.push(task);\n    } else if (deadline >= tomorrow && deadline < in3Days) {\n      ownerData.upcoming_3days.push(task);\n    } else if (deadline >= in3Days && deadline < in7Days) {\n      ownerData.upcoming_week.push(task);\n    }\n  }\n}\n\n// Convert to array and filter only owners with pending tasks\nconst owners = Array.from(ownerMap.values()).filter(owner => \n  owner.overdue.length > 0 || \n  owner.today.length > 0 || \n  owner.upcoming_3days.length > 0 ||\n  owner.in_progress.length > 0\n);\n\nif (owners.length === 0) {\n  return [];\n}\n\nreturn owners.map(owner => ({ json: owner }));"
+      },
+      "name": "Function: Group Tasks by Owner",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "name": "Split Into Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/user-email/{{$json.owner_id}}",
+        "authentication": "none",
+        "options": {}
+      },
+      "name": "HTTP: Get Owner Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.owner_email}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "IF: Has Email",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Prepare personal daily digest email content\nconst ownerInfo = $input.first().json;\nconst previousData = $node['Split Into Items'].json;\n\nconst overdueList = previousData.overdue || [];\nconst todayList = previousData.today || [];\nconst upcoming3Days = previousData.upcoming_3days || [];\nconst inProgressList = previousData.in_progress || [];\n\n// Build task lists as HTML\nconst formatTaskList = (tasks) => {\n  if (tasks.length === 0) return '<li style=\"color: #888;\">Không có</li>';\n  return tasks.map(t => \n    `<li><strong>${t.name}</strong> - Tiến độ: ${t.progress || 0}% - Deadline: ${t.deadline ? new Date(t.deadline).toLocaleDateString('vi-VN') : 'N/A'}</li>`\n  ).join('');\n};\n\nconst overdueHtml = formatTaskList(overdueList);\nconst todayHtml = formatTaskList(todayList);\nconst upcoming3DaysHtml = formatTaskList(upcoming3Days);\nconst inProgressHtml = formatTaskList(inProgressList);\n\nreturn {\n  json: {\n    owner_email: ownerInfo.owner_email,\n    owner_name: ownerInfo.owner_name || 'Bạn',\n    overdue_count: overdueList.length,\n    today_count: todayList.length,\n    upcoming_count: upcoming3Days.length,\n    in_progress_count: inProgressList.length,\n    overdue_html: overdueHtml,\n    today_html: todayHtml,\n    upcoming_html: upcoming3DaysHtml,\n    in_progress_html: inProgressHtml,\n    total_pending: overdueList.length + todayList.length + upcoming3Days.length\n  }\n};"
+      },
+      "name": "Function: Format Email Content",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.EMAIL_FROM}}",
+        "toEmail": "={{$json.owner_email}}",
+        "subject": "📅 Báo cáo công việc hàng ngày của bạn - {{$today.format('DD/MM/YYYY')}}",
+        "emailType": "html",
+        "text": "=Xin chào {{$json.owner_name}}!\n\nĐây là báo cáo công việc CÁ NHÂN của bạn hôm nay:\n\n🔴 CÔNG VIỆC QUÁ HẠN ({{$json.overdue_count}}):\n- Cần hoàn thành ngay!\n\n🟠 CÔNG VIỆC HÔM NAY ({{$json.today_count}}):\n- Deadline trong hôm nay\n\n🟡 CÔNG VIỆC 3 NGÀY TỚI ({{$json.upcoming_count}}):\n- Deadline trong 3 ngày tới\n\n🔵 ĐANG THỰC HIỆN ({{$json.in_progress_count}}):\n- Tasks bạn đang làm\n\n💪 Chúc bạn một ngày làm việc hiệu quả!\n\nTruy cập ngay: http://localhost:5173/tasks\n\n---\nEmail tự động từ AI Deadline - Công cụ quản lý deadline CÁ NHÂN của bạn",
+        "html": "=<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; }\n    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 25px; text-align: center; border-radius: 10px 10px 0 0; }\n    .content { background: #f9f9f9; padding: 25px; }\n    .section { background: white; padding: 15px; border-radius: 8px; margin: 15px 0; }\n    .section-title { font-weight: bold; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }\n    .overdue { border-left: 4px solid #ef4444; }\n    .today { border-left: 4px solid #f97316; }\n    .upcoming { border-left: 4px solid #eab308; }\n    .in-progress { border-left: 4px solid #3b82f6; }\n    .count-badge { background: #e5e7eb; padding: 2px 8px; border-radius: 12px; font-size: 12px; }\n    .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; background: #f9f9f9; border-radius: 0 0 10px 10px; }\n    ul { margin: 0; padding-left: 20px; }\n    li { margin: 5px 0; }\n  </style>\n</head>\n<body>\n  <div class='container'>\n    <div class='header'>\n      <h1>📅 Báo cáo Công việc Hàng ngày</h1>\n      <p style='margin: 0; opacity: 0.9;'>Xin chào {{$json.owner_name}}! Đây là tổng quan tasks CÁ NHÂN của bạn</p>\n    </div>\n    <div class='content'>\n      \n      <div class='section overdue'>\n        <div class='section-title'>\n          🔴 CÔNG VIỆC QUÁ HẠN <span class='count-badge'>{{$json.overdue_count}}</span>\n        </div>\n        <ul>{{$json.overdue_html}}</ul>\n      </div>\n      \n      <div class='section today'>\n        <div class='section-title'>\n          🟠 CÔNG VIỆC HÔM NAY <span class='count-badge'>{{$json.today_count}}</span>\n        </div>\n        <ul>{{$json.today_html}}</ul>\n      </div>\n      \n      <div class='section upcoming'>\n        <div class='section-title'>\n          🟡 DEADLINE 3 NGÀY TỚI <span class='count-badge'>{{$json.upcoming_count}}</span>\n        </div>\n        <ul>{{$json.upcoming_html}}</ul>\n      </div>\n      \n      <div class='section in-progress'>\n        <div class='section-title'>\n          🔵 ĐANG THỰC HIỆN <span class='count-badge'>{{$json.in_progress_count}}</span>\n        </div>\n        <ul>{{$json.in_progress_html}}</ul>\n      </div>\n      \n      <div style='text-align: center; margin-top: 25px;'>\n        <a href='http://localhost:5173/tasks' style='display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 25px; font-weight: bold;'>\n          Quản lý Tasks của bạn →\n        </a>\n      </div>\n      \n      <p style='text-align: center; margin-top: 20px; color: #666;'>\n        💪 Chúc bạn một ngày làm việc hiệu quả!\n      </p>\n    </div>\n    <div class='footer'>\n      <p>Email tự động từ <strong>AI Deadline Forecasting Agent</strong></p>\n      <p><em>Công cụ quản lý deadline CÁ NHÂN của bạn</em></p>\n    </div>\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "name": "Send Email: Daily Digest",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1780, 300],
+      "credentials": {
+        "smtp": {
+          "id": "1",
+          "name": "SMTP Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/automation-log",
+        "authentication": "none",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "workflow_name",
+              "value": "Personal Daily Digest"
+            },
+            {
+              "name": "status",
+              "value": "success"
+            },
+            {
+              "name": "input_data",
+              "value": "={{JSON.stringify({owner_email: $json.owner_email})}}"
+            },
+            {
+              "name": "output_data",
+              "value": "={{JSON.stringify({overdue: $json.overdue_count, today: $json.today_count, upcoming: $json.upcoming_count})}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "HTTP: Log to Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [2000, 300]
+    }
+  ],
+  "connections": {
+    "Cron Trigger (Daily 8AM)": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Get All Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Get All Tasks": {
+      "main": [
+        [
+          {
+            "node": "Function: Group Tasks by Owner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function: Group Tasks by Owner": {
+      "main": [
+        [
+          {
+            "node": "Split Into Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Into Items": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Get Owner Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Get Owner Email": {
+      "main": [
+        [
+          {
+            "node": "IF: Has Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Has Email": {
+      "main": [
+        [
+          {
+            "node": "Function: Format Email Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function: Format Email Content": {
+      "main": [
+        [
+          {
+            "node": "Send Email: Daily Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email: Daily Digest": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Log to Backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "7",
+  "id": "7",
+  "meta": {
+    "instanceId": "ai_deadline_n8n"
+  },
+  "tags": []
+}

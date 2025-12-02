@@ -41,7 +41,7 @@
     },
     {
       "parameters": {
-        "functionCode": "// Prepare prompt for Gemini AI\nconst tasks = $input.all();\nconst taskData = [];\n\nfor (const task of tasks) {\n  const t = task.json;\n  taskData.push({\n    id: t.id,\n    name: t.name,\n    progress: t.progress || 0,\n    deadline: t.deadline,\n    status: t.status,\n    priority: t.priority\n  });\n}\n\nif (taskData.length === 0) {\n  return [];\n}\n\nconst prompt = `Bạn là chuyên gia quản lý dự án. Phân tích các task sau và dự đoán nguy cơ trễ deadline:\n\n${JSON.stringify(taskData, null, 2)}\n\nVới mỗi task, đánh giá:\n- risk_level: \"low\", \"medium\", \"high\", hoặc \"critical\"\n- risk_percentage: 0-100 (số thực)\n- predicted_delay_days: số ngày dự đoán trễ (0 nếu không trễ)\n- analysis: phân tích ngắn gọn bằng tiếng Việt\n- recommendations: khuyến nghị cụ thể bằng tiếng Việt\n\nTrả về CHÍNH XÁC định dạng JSON array sau:\n[\n  {\n    \"task_id\": 1,\n    \"risk_level\": \"high\",\n    \"risk_percentage\": 75.5,\n    \"predicted_delay_days\": 3,\n    \"analysis\": \"Task đang ở 60% sau 80% thời gian\",\n    \"recommendations\": \"Cần bổ sung nhân lực\"\n  }\n]`;\n\nreturn {\n  json: {\n    prompt: prompt,\n    taskData: taskData\n  }\n};"
+        "functionCode": "// Prepare prompt for Gemini AI\n// Analyze both in_progress AND todo tasks that haven't been completed\nconst response = $input.first().json;\nconst tasks = response.tasks || [];\nconst taskData = [];\n\nfor (const t of tasks) {\n  // Skip completed tasks only\n  if (t.status === 'done') continue;\n  \n  taskData.push({\n    id: t.id,\n    name: t.name,\n    progress: t.progress || 0,\n    deadline: t.deadline,\n    status: t.status,\n    priority: t.priority,\n    owner_id: t.owner_id,\n    project_name: t.project_name,\n    owner_name: t.owner_name\n  });\n}\n\nif (taskData.length === 0) {\n  // Return a special marker to indicate no tasks to process\n  return [{\n    json: {\n      skip: true,\n      message: 'No pending tasks to analyze'\n    }\n  }];\n}\n\nconst today = new Date().toISOString().split('T')[0];\n\nconst prompt = 'Bạn là chuyên gia quản lý deadline CÁ NHÂN. Phân tích các task sau và dự đoán nguy cơ trễ deadline.\\nHôm nay là: ' + today + '\\n\\nDanh sách tasks cần phân tích:\\n' + JSON.stringify(taskData, null, 2) + '\\n\\nVới MỖI task trong danh sách trên, đánh giá:\\n- task_id: ID của task (số nguyên, bắt buộc)\\n- risk_level: \"low\", \"medium\", \"high\", hoặc \"critical\" (bắt buộc)\\n- risk_percentage: 0-100 (số thực, bắt buộc)\\n- predicted_delay_days: số ngày dự đoán trễ, 0 nếu không trễ (số nguyên)\\n- analysis: phân tích ngắn gọn bằng tiếng Việt (string)\\n- recommendations: khuyến nghị cụ thể bằng tiếng Việt (string)\\n\\nQUY TẮC QUAN TRỌNG:\\n1. Phân tích DỰA TRÊN deadline và progress hiện tại\\n2. Nếu progress < 50% và deadline còn < 7 ngày => high/critical risk\\n3. Nếu progress = 0% và deadline đã qua => critical risk, 100%\\n4. Tất cả ' + taskData.length + ' task PHẢI có trong kết quả\\n\\nTrả về ĐÚNG ĐỊNH DẠNG JSON ARRAY sau (KHÔNG có markdown, KHÔNG có giải thích thêm):\\n[{\"task_id\": 1, \"risk_level\": \"high\", \"risk_percentage\": 75.5, \"predicted_delay_days\": 3, \"analysis\": \"Phân tích...\", \"recommendations\": \"Khuyến nghị...\"}]';\n\nreturn [{\n  json: {\n    skip: false,\n    prompt: prompt,\n    taskData: taskData\n  }\n}];"
       },
       "name": "Function: Prepare AI Prompt",
       "type": "n8n-nodes-base.function",
@@ -50,28 +50,75 @@
     },
     {
       "parameters": {
-        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={{$env.GEMINI_API_KEY}}",
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.skip}}",
+              "value2": false
+            }
+          ]
+        }
+      },
+      "name": "IF: Has Tasks",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1100, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={{$env.GEMINI_API_KEY}}",
         "authentication": "none",
         "method": "POST",
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": {{JSON.stringify($json.prompt)}}\n        }\n      ]\n    }\n  ]\n}",
-        "options": {}
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": {{JSON.stringify($json.prompt)}}\n        }\n      ]\n    }\n  ],\n  \"generationConfig\": {\n    \"responseMimeType\": \"application/json\"\n  }\n}",
+        "options": {
+          "retry": {
+            "values": {
+              "maxTries": 3,
+              "retryOnStatusCodes": {
+                "values": [
+                  {
+                    "statusCode": "429,500,502,503,504"
+                  }
+                ]
+              },
+              "waitBetweenTries": 2000
+            }
+          },
+          "timeout": 60000
+        }
       },
       "name": "HTTP: Gemini API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [1120, 300]
+      "position": [1320, 200]
     },
     {
       "parameters": {
-        "functionCode": "// Parse AI response and extract JSON\nconst response = $input.first().json;\nlet results = [];\n\ntry {\n  const text = response.candidates[0].content.parts[0].text;\n  \n  // Try to extract JSON from response\n  const jsonMatch = text.match(/\\[.*\\]/s);\n  if (jsonMatch) {\n    results = JSON.parse(jsonMatch[0]);\n  }\n} catch (error) {\n  console.log('Error parsing AI response:', error);\n  // Return empty array if parsing fails\n  return [];\n}\n\n// Return each result as separate item for next node\nreturn results.map(r => ({ json: r }));"
+        "functionCode": "// Parse AI response and extract JSON\nconst response = $input.first().json;\nconst taskData = $node['IF: Has Tasks'].json.taskData || [];\nlet results = [];\n\ntry {\n  // Check if we have a valid AI response\n  if (!response.candidates || !response.candidates[0] || !response.candidates[0].content) {\n    throw new Error('Invalid AI response structure');\n  }\n  \n  const text = response.candidates[0].content.parts[0].text;\n  let jsonStr = text;\n  \n  // Remove markdown code blocks if present\n  const codeBlockMatch = text.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  if (codeBlockMatch) {\n    jsonStr = codeBlockMatch[1].trim();\n  }\n  \n  // Try to extract JSON array\n  const jsonMatch = jsonStr.match(/\\[\\s*\\{[\\s\\S]*\\}\\s*\\]/s);\n  if (jsonMatch) {\n    results = JSON.parse(jsonMatch[0]);\n  } else {\n    results = JSON.parse(jsonStr);\n  }\n  \n  // Validate and ensure all required fields exist\n  results = results.map(r => {\n    const taskInfo = taskData.find(t => t.id === r.task_id) || {};\n    return {\n      task_id: r.task_id,\n      task_name: taskInfo.name || '',\n      task_progress: taskInfo.progress || 0,\n      task_deadline: taskInfo.deadline || '',\n      project_name: taskInfo.project_name || '',\n      owner_id: taskInfo.owner_id || null,\n      owner_name: taskInfo.owner_name || '',\n      risk_level: (r.risk_level || 'medium').toLowerCase(),\n      risk_percentage: parseFloat(r.risk_percentage) || 50.0,\n      predicted_delay_days: parseInt(r.predicted_delay_days) || 0,\n      analysis: r.analysis || 'Không có phân tích chi tiết',\n      recommendations: r.recommendations || 'Cập nhật tiến độ thường xuyên'\n    };\n  });\n  \n} catch (error) {\n  console.log('Error parsing AI response:', error.message);\n  console.log('Response:', JSON.stringify(response).substring(0, 500));\n  \n  // Fallback: Create basic forecasts for all tasks if AI fails\n  if (taskData.length > 0) {\n    const now = new Date();\n    results = taskData.map(task => {\n      const progress = task.progress || 0;\n      const deadline = task.deadline ? new Date(task.deadline) : null;\n      const daysUntilDeadline = deadline ? Math.ceil((deadline - now) / (1000 * 60 * 60 * 24)) : 30;\n      \n      let riskLevel = 'low';\n      let riskPercentage = 20;\n      let predictedDelay = 0;\n      \n      // Calculate risk based on progress and deadline\n      if (daysUntilDeadline < 0) {\n        // Already overdue\n        riskLevel = 'critical';\n        riskPercentage = 100;\n        predictedDelay = Math.abs(daysUntilDeadline);\n      } else if (progress < 30 && daysUntilDeadline < 7) {\n        riskLevel = 'critical';\n        riskPercentage = 90;\n        predictedDelay = Math.max(0, 7 - daysUntilDeadline);\n      } else if (progress < 50 && daysUntilDeadline < 7) {\n        riskLevel = 'high';\n        riskPercentage = 75;\n        predictedDelay = Math.max(0, 3 - daysUntilDeadline + 3);\n      } else if (progress < 30) {\n        riskLevel = 'high';\n        riskPercentage = 70;\n        predictedDelay = 3;\n      } else if (progress < 60) {\n        riskLevel = 'medium';\n        riskPercentage = 50;\n        predictedDelay = 1;\n      }\n      \n      return {\n        task_id: task.id,\n        task_name: task.name || '',\n        task_progress: task.progress || 0,\n        task_deadline: task.deadline || '',\n        project_name: task.project_name || '',\n        owner_id: task.owner_id || null,\n        owner_name: task.owner_name || '',\n        risk_level: riskLevel,\n        risk_percentage: riskPercentage,\n        predicted_delay_days: predictedDelay,\n        analysis: 'Task \"' + task.name + '\" đang ở ' + progress + '% tiến độ. ' + (daysUntilDeadline < 0 ? 'Đã quá hạn ' + Math.abs(daysUntilDeadline) + ' ngày!' : 'Còn ' + daysUntilDeadline + ' ngày đến deadline.'),\n        recommendations: progress < 50 ? 'Cần tập trung hoàn thành task này ngay.' : 'Cập nhật tiến độ thường xuyên để AI đánh giá chính xác hơn.'\n      };\n    });\n  }\n}\n\nconst validResults = results.filter(r => r.task_id && r.risk_level);\n\nif (validResults.length === 0) {\n  // Return empty marker instead of empty array\n  return [{ json: { empty: true } }];\n}\n\nreturn validResults.map(r => ({ json: r }));"
       },
       "name": "Function: Parse AI Response",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1340, 300]
+      "position": [1540, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.empty}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "IF: Has Results",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1760, 200]
     },
     {
       "parameters": {
@@ -87,7 +134,16 @@
       "name": "HTTP: Save Forecast",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [1560, 300]
+      "position": [1980, 100]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Preserve original data after HTTP Save Forecast\n// Get the data from the previous parse step\nconst items = $input.all();\nconst parseNode = $node['IF: Has Results'];\n\nreturn items.map((item, index) => {\n  // Try to get original data from parse response\n  const originalData = parseNode.json || item.json;\n  return {\n    json: originalData\n  };\n});"
+      },
+      "name": "Function: Restore Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2200, 100]
     },
     {
       "parameters": {
@@ -104,7 +160,7 @@
       "name": "IF: High Risk Detected",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [1780, 300]
+      "position": [2420, 100]
     },
     {
       "parameters": {
@@ -115,16 +171,16 @@
       "name": "HTTP: Get Task Owner Email",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [2000, 300]
+      "position": [2640, 100]
     },
     {
       "parameters": {
-        "functionCode": "// Lấy email của project owner (chủ sở hữu task)\nconst taskInfo = $input.first().json;\nconst riskData = $node['IF: High Risk Detected'].json;\n\n// Tasks thuộc về project owner - gửi email cho chính họ\nconst recipientEmail = taskInfo.owner_email;\nconst recipientName = taskInfo.owner_name || 'User';\n\nreturn {\n  json: {\n    recipientEmail: recipientEmail,\n    recipientName: recipientName,\n    taskId: riskData.task_id,\n    taskName: taskInfo.task_name,\n    taskProgress: taskInfo.task_progress || 0,\n    taskDeadline: taskInfo.task_deadline,\n    projectName: taskInfo.project_name,\n    riskLevel: riskData.risk_level,\n    riskPercentage: riskData.risk_percentage,\n    predictedDelay: riskData.predicted_delay_days,\n    analysis: riskData.analysis,\n    recommendations: riskData.recommendations\n  }\n};"
+        "functionCode": "// Lấy email của project owner (chủ sở hữu task)\nconst taskInfo = $input.first().json;\nconst riskData = $node['IF: High Risk Detected'].json;\n\nconst recipientEmail = taskInfo.owner_email;\nconst recipientName = taskInfo.owner_name || 'User';\n\nreturn {\n  json: {\n    recipientEmail: recipientEmail,\n    recipientName: recipientName,\n    taskId: riskData.task_id,\n    taskName: riskData.task_name || taskInfo.task_name,\n    taskProgress: riskData.task_progress || taskInfo.task_progress || 0,\n    taskDeadline: riskData.task_deadline || taskInfo.task_deadline,\n    projectName: riskData.project_name || taskInfo.project_name,\n    riskLevel: riskData.risk_level,\n    riskPercentage: riskData.risk_percentage,\n    predictedDelay: riskData.predicted_delay_days,\n    analysis: riskData.analysis,\n    recommendations: riskData.recommendations\n  }\n};"
       },
       "name": "Function: Prepare Email Data",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [2220, 300]
+      "position": [2860, 100]
     },
     {
       "parameters": {
@@ -132,19 +188,36 @@
         "toEmail": "={{$json.recipientEmail}}",
         "subject": "⚠️ Cảnh báo: Task của bạn có nguy cơ trễ cao",
         "emailType": "html",
-        "message": "=<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; background: #f9f9f9; }\n    .header { background: #dc2626; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }\n    .content { background: white; padding: 30px; border-radius: 0 0 5px 5px; }\n    .alert-box { background: #fee; border-left: 4px solid #dc2626; padding: 15px; margin: 15px 0; }\n    .info-box { background: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 15px; margin: 15px 0; }\n    .risk-badge { display: inline-block; padding: 5px 15px; border-radius: 20px; font-weight: bold; }\n    .risk-high { background: #dc2626; color: white; }\n    .risk-critical { background: #991b1b; color: white; }\n  </style>\n</head>\n<body>\n  <div class='container'>\n    <div class='header'>\n      <h2>⚠️ CẢNH BÁO NGUY CƠ TRỄ DEADLINE</h2>\n    </div>\n    <div class='content'>\n      <p>Xin chào <strong>{{$json.recipientName}}</strong>,</p>\n      <p>Hệ thống AI phát hiện <strong>task của bạn</strong> có nguy cơ trễ deadline cao.</p>\n      \n      <div class='alert-box'>\n        <h3>📋 Task của bạn</h3>\n        <ul>\n          <li><strong>Tên task:</strong> {{$json.taskName}}</li>\n          <li><strong>Dự án:</strong> {{$json.projectName}}</li>\n          <li><strong>Task ID:</strong> #{{$json.taskId}}</li>\n          <li><strong>Tiến độ hiện tại:</strong> {{$json.taskProgress}}%</li>\n          <li><strong>Deadline:</strong> {{$json.taskDeadline}}</li>\n        </ul>\n      </div>\n      \n      <div class='alert-box'>\n        <h3>🚨 Mức độ rủi ro</h3>\n        <p>\n          <span class='risk-badge {{$json.riskLevel === \"critical\" ? \"risk-critical\" : \"risk-high\"}}'>\n            {{$json.riskLevel.toUpperCase()}}\n          </span>\n        </p>\n        <ul>\n          <li><strong>Risk Level:</strong> {{$json.riskLevel}}</li>\n          <li><strong>Risk Percentage:</strong> {{$json.riskPercentage}}%</li>\n          <li><strong>Dự đoán trễ:</strong> {{$json.predictedDelay}} ngày</li>\n        </ul>\n      </div>\n      \n      <div class='info-box'>\n        <h3>🤖 Phân tích AI</h3>\n        <p>{{$json.analysis}}</p>\n      </div>\n      \n      <div class='info-box'>\n        <h3>💡 Khuyến nghị</h3>\n        <p>{{$json.recommendations}}</p>\n      </div>\n      \n      <p style='margin-top: 30px;'>\n        <a href='http://localhost:5173/tasks' style='display: inline-block; background: #0ea5e9; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px;'>\n          Cập nhật Task ngay\n        </a>\n      </p>\n      \n      <p style='color: #666; font-size: 12px; margin-top: 30px;'>\n        <em>Email này được gửi tự động từ hệ thống AI Deadline Forecasting Agent.</em><br>\n        <em>Task này thuộc về bạn - chỉ bạn mới có thể cập nhật nó.</em>\n      </p>\n    </div>\n  </div>\n</body>\n</html>",
+        "text": "=Xin chào {{$json.recipientName}},\n\nHệ thống AI phát hiện task của bạn có nguy cơ trễ deadline cao.\n\n📋 Task của bạn:\n- Tên task: {{$json.taskName}}\n- Dự án: {{$json.projectName}}\n- Task ID: #{{$json.taskId}}\n- Tiến độ hiện tại: {{$json.taskProgress}}%\n- Deadline: {{$json.taskDeadline}}\n\n🚨 Mức độ rủi ro:\n- Risk Level: {{$json.riskLevel}}\n- Risk Percentage: {{$json.riskPercentage}}%\n- Dự đoán trễ: {{$json.predictedDelay}} ngày\n\n🤖 Phân tích AI:\n{{$json.analysis}}\n\n💡 Khuyến nghị:\n{{$json.recommendations}}\n\nCập nhật Task ngay: http://localhost:5173/tasks",
+        "html": "=<html><head><style>body{font-family:Arial,sans-serif;line-height:1.6;color:#333}.container{max-width:600px;margin:0 auto;padding:20px;background:#f9f9f9}.header{background:#dc2626;color:white;padding:20px;text-align:center;border-radius:5px 5px 0 0}.content{background:white;padding:30px;border-radius:0 0 5px 5px}.alert-box{background:#fee;border-left:4px solid #dc2626;padding:15px;margin:15px 0}.info-box{background:#f0f9ff;border-left:4px solid #0ea5e9;padding:15px;margin:15px 0}</style></head><body><div class='container'><div class='header'><h2>⚠️ CẢNH BÁO NGUY CƠ TRỄ DEADLINE</h2></div><div class='content'><p>Xin chào <strong>{{$json.recipientName}}</strong>,</p><p>Hệ thống AI phát hiện <strong>task của bạn</strong> có nguy cơ trễ deadline cao.</p><div class='alert-box'><h3>📋 Task của bạn</h3><ul><li><strong>Tên task:</strong> {{$json.taskName}}</li><li><strong>Dự án:</strong> {{$json.projectName}}</li><li><strong>Task ID:</strong> #{{$json.taskId}}</li><li><strong>Tiến độ hiện tại:</strong> {{$json.taskProgress}}%</li><li><strong>Deadline:</strong> {{$json.taskDeadline}}</li></ul></div><div class='alert-box'><h3>🚨 Mức độ rủi ro</h3><ul><li><strong>Risk Level:</strong> {{$json.riskLevel}}</li><li><strong>Risk Percentage:</strong> {{$json.riskPercentage}}%</li><li><strong>Dự đoán trễ:</strong> {{$json.predictedDelay}} ngày</li></ul></div><div class='info-box'><h3>🤖 Phân tích AI</h3><p>{{$json.analysis}}</p></div><div class='info-box'><h3>💡 Khuyến nghị</h3><p>{{$json.recommendations}}</p></div><p style='margin-top:30px'><a href='http://localhost:5173/tasks' style='display:inline-block;background:#0ea5e9;color:white;padding:12px 30px;text-decoration:none;border-radius:5px'>Cập nhật Task ngay</a></p></div></div></body></html>",
         "options": {}
       },
-        "name": "Send Email: Alert to Owner",
+      "name": "Send Email: Alert to Owner",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2,
-      "position": [2440, 300],
+      "position": [3080, 100],
       "credentials": {
         "smtp": {
           "id": "1",
           "name": "SMTP Account"
         }
       }
+    },
+    {
+      "parameters": {
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/automation-log",
+        "authentication": "none",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflow_name\": \"Quick Progress Forecast\",\n  \"status\": \"success\",\n  \"input_data\": {\"message\": \"Email alert sent\"},\n  \"output_data\": {\"task_id\": {{$json.taskId}}, \"risk_level\": {{JSON.stringify($json.riskLevel)}}}\n}",
+        "options": {}
+      },
+      "name": "HTTP: Log Success",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [3300, 100]
     }
   ],
   "connections": {
@@ -185,6 +258,17 @@
       "main": [
         [
           {
+            "node": "IF: Has Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Has Tasks": {
+      "main": [
+        [
+          {
             "node": "HTTP: Gemini API",
             "type": "main",
             "index": 0
@@ -207,6 +291,18 @@
       "main": [
         [
           {
+            "node": "IF: Has Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Has Results": {
+      "main": [
+        [],
+        [
+          {
             "node": "HTTP: Save Forecast",
             "type": "main",
             "index": 0
@@ -215,6 +311,17 @@
       ]
     },
     "HTTP: Save Forecast": {
+      "main": [
+        [
+          {
+            "node": "Function: Restore Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function: Restore Data": {
       "main": [
         [
           {
@@ -252,6 +359,17 @@
         [
           {
             "node": "Send Email: Alert to Owner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email: Alert to Owner": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Log Success",
             "type": "main",
             "index": 0
           }

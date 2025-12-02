@@ -5,7 +5,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "n8n/new-user",
-        "responseMode": "lastNode",
+        "responseMode": "responseNode",
         "options": {}
       },
       "name": "Webhook Trigger",
@@ -16,17 +16,43 @@
     },
     {
       "parameters": {
+        "functionCode": "// Extract user data from webhook body\nconst webhookData = items[0].json;\n\n// Debug: log what we received\nconsole.log('Received webhookData:', JSON.stringify(webhookData));\nconsole.log('Keys:', Object.keys(webhookData));\n\n// n8n webhook wraps POST data in 'body' key\n// Check if data is in body (from webhook) or at root level (from test)\nconst userData = webhookData.body || webhookData;\n\nconsole.log('Extracted userData:', JSON.stringify(userData));\n\n// Return array format for Function node v1\nreturn [{\n  json: {\n    user_id: userData.user_id || 0,\n    email: userData.email || '',\n    username: userData.username || '',\n    full_name: userData.full_name || userData.username || 'User',\n    token: userData.token || ''\n  }\n}];"
+      },
+      "name": "Function: Extract User Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.email}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "IF: Has Valid Email",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
         "fromEmail": "={{$env.EMAIL_FROM}}",
-        "toEmail": "={{$json.body.email}}",
+        "toEmail": "={{$json.email}}",
         "subject": "Chào mừng đến với AI Deadline! 🎉",
         "emailType": "html",
-        "message": "=<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; }\n    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }\n    .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }\n    .button { display: inline-block; background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin-top: 20px; }\n    .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }\n  </style>\n</head>\n<body>\n  <div class='container'>\n    <div class='header'>\n      <h1>🎉 Chào mừng đến với AI Deadline!</h1>\n    </div>\n    <div class='content'>\n      <h2>Xin chào {{$json.body.full_name}}!</h2>\n      <p>Chúc mừng bạn đã đăng ký thành công tài khoản trên hệ thống <strong>AI Deadline Forecasting Agent</strong>.</p>\n      <p>Chúng tôi đã tự động tạo sẵn <strong>1 dự án mẫu</strong> để bạn khám phá các tính năng của hệ thống:</p>\n      <ul>\n        <li>✅ Dashboard trực quan với biểu đồ thống kê</li>\n        <li>🤖 Dự đoán nguy cơ trễ deadline bằng AI</li>\n        <li>📊 Quản lý dự án và tasks hiệu quả</li>\n        <li>🔮 Mô phỏng kịch bản \"What-if\"</li>\n        <li>⚙️ Tự động hóa với n8n workflows</li>\n      </ul>\n      <p>Hãy bắt đầu trải nghiệm ngay:</p>\n      <a href='http://localhost:5173/dashboard' class='button'>Truy cập Dashboard</a>\n      <p style='margin-top: 20px;'><strong>Thông tin đăng nhập:</strong></p>\n      <ul>\n        <li>Tên đăng nhập: <strong>{{$json.body.username}}</strong></li>\n        <li>Email: <strong>{{$json.body.email}}</strong></li>\n      </ul>\n    </div>\n    <div class='footer'>\n      <p>© 2024 AI Deadline Forecasting Agent. All rights reserved.</p>\n      <p>Nếu bạn cần hỗ trợ, vui lòng liên hệ: admin@ai-deadline.io.vn</p>\n    </div>\n  </div>\n</body>\n</html>",
+        "text": "=Xin chào {{$json.full_name}}!\n\nChúc mừng bạn đã đăng ký thành công tài khoản trên hệ thống AI Deadline Forecasting Agent.\n\nChúng tôi đã tự động tạo sẵn 1 dự án mẫu để bạn khám phá các tính năng của hệ thống:\n✅ Dashboard trực quan với biểu đồ thống kê\n🤖 Dự đoán nguy cơ trễ deadline bằng AI\n📊 Quản lý dự án và tasks hiệu quả\n🔮 Mô phỏng kịch bản What-if\n⚙️ Tự động hóa với n8n workflows\n\nHãy bắt đầu trải nghiệm ngay: http://localhost:5173/dashboard\n\nThông tin đăng nhập:\n- Tên đăng nhập: {{$json.username}}\n- Email: {{$json.email}}\n\n---\n© 2024 AI Deadline Forecasting Agent. All rights reserved.",
+        "html": "=<html><head><style>body{font-family:Arial,sans-serif;line-height:1.6;color:#333}.container{max-width:600px;margin:0 auto;padding:20px}.header{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:30px;text-align:center;border-radius:10px 10px 0 0}.content{background:#f9f9f9;padding:30px;border-radius:0 0 10px 10px}.button{display:inline-block;background:#667eea;color:white;padding:12px 30px;text-decoration:none;border-radius:5px;margin-top:20px}.footer{text-align:center;margin-top:20px;color:#666;font-size:12px}</style></head><body><div class='container'><div class='header'><h1>🎉 Chào mừng đến với AI Deadline!</h1></div><div class='content'><h2>Xin chào {{$json.full_name}}!</h2><p>Chúc mừng bạn đã đăng ký thành công tài khoản trên hệ thống <strong>AI Deadline Forecasting Agent</strong>.</p><p>Chúng tôi đã tự động tạo sẵn <strong>1 dự án mẫu</strong> để bạn khám phá các tính năng của hệ thống:</p><ul><li>✅ Dashboard trực quan với biểu đồ thống kê</li><li>🤖 Dự đoán nguy cơ trễ deadline bằng AI</li><li>📊 Quản lý dự án và tasks hiệu quả</li><li>🔮 Mô phỏng kịch bản What-if</li><li>⚙️ Tự động hóa với n8n workflows</li></ul><p>Hãy bắt đầu trải nghiệm ngay:</p><a href='http://localhost:5173/dashboard' class='button'>Truy cập Dashboard</a><p style='margin-top:20px'><strong>Thông tin đăng nhập:</strong></p><ul><li>Tên đăng nhập: <strong>{{$json.username}}</strong></li><li>Email: <strong>{{$json.email}}</strong></li></ul></div><div class='footer'><p>© 2024 AI Deadline Forecasting Agent. All rights reserved.</p><p>Nếu bạn cần hỗ trợ, vui lòng liên hệ: admin@ai-deadline.io.vn</p></div></div></body></html>",
         "options": {}
       },
       "name": "Send Welcome Email",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2,
-      "position": [460, 300],
+      "position": [900, 200],
       "credentials": {
         "smtp": {
           "id": "1",
@@ -36,24 +62,16 @@
     },
     {
       "parameters": {
-        "url": "={{$env.BACKEND_API_URL}}/api/projects/demo",
-        "authentication": "headerAuth",
+        "url": "={{$env.BACKEND_API_URL}}/api/projects/demo/internal?user_id={{$node['Function: Extract User Data'].json.user_id}}",
+        "authentication": "none",
         "method": "POST",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{$json.body.token}}"
-            }
-          ]
-        },
+        "sendHeaders": false,
         "options": {}
       },
       "name": "HTTP: Create Demo Project",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [680, 300]
+      "position": [1120, 200]
     },
     {
       "parameters": {
@@ -61,43 +79,39 @@
         "authentication": "none",
         "method": "POST",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "workflow_name",
-              "value": "User Registration Automation"
-            },
-            {
-              "name": "status",
-              "value": "success"
-            },
-            {
-              "name": "input_data",
-              "value": "={{JSON.stringify({user_id: $node['Webhook Trigger'].json.body.user_id, email: $node['Webhook Trigger'].json.body.email})}}"
-            },
-            {
-              "name": "output_data",
-              "value": "={{JSON.stringify({email_sent: true, demo_project_created: true, project_id: $json.id})}}"
-            }
-          ]
-        },
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflow_name\": \"User Registration Automation\",\n  \"status\": \"success\",\n  \"input_data\": {{JSON.stringify({user_id: $node['Function: Extract User Data'].json.user_id, email: $node['Function: Extract User Data'].json.email})}},\n  \"output_data\": {{JSON.stringify({email_sent: true, demo_project_created: true, project_id: $json.id || 0})}}\n}",
         "options": {}
       },
       "name": "HTTP: Log Automation",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [900, 300]
+      "position": [1340, 200]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{JSON.stringify({success: true, message: 'User setup completed', demo_project_id: $json.id})}}",
+        "responseBody": "={{JSON.stringify({success: true, message: 'User setup completed', demo_project_id: $json.id || 0})}}",
         "options": {}
       },
-      "name": "Webhook Response",
+      "name": "Webhook Response Success",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [1120, 300]
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{JSON.stringify({success: false, message: 'Invalid email address'})}}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "name": "Webhook Response Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [900, 400]
     }
   ],
   "connections": {
@@ -105,7 +119,36 @@
       "main": [
         [
           {
+            "node": "Function: Extract User Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function: Extract User Data": {
+      "main": [
+        [
+          {
+            "node": "IF: Has Valid Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Has Valid Email": {
+      "main": [
+        [
+          {
             "node": "Send Welcome Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Webhook Response Error",
             "type": "main",
             "index": 0
           }
@@ -138,7 +181,7 @@
       "main": [
         [
           {
-            "node": "Webhook Response",
+            "node": "Webhook Response Success",
             "type": "main",
             "index": 0
           }
