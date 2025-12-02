@@ -1,0 +1,152 @@
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14-alpine
+    container_name: ai_deadline_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ai_user
+      POSTGRES_PASSWORD: ai_password
+      POSTGRES_DB: ai_deadline
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ai_deadline_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_user -d ai_deadline"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API (FastAPI)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai_deadline_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://ai_user:ai_password@postgres:5432/ai_deadline
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      FRONTEND_URL: http://frontend:5173
+      N8N_WEBHOOK_URL: http://n8n:5678
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    networks:
+      - ai_deadline_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo '⏳ Waiting for database...' &&
+        sleep 5 &&
+        echo '🔄 Running database migrations...' &&
+        alembic upgrade head &&
+        echo '🚀 Starting backend server...' &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+  # Frontend (React + Vite)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ai_deadline_frontend
+    restart: unless-stopped
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - ai_deadline_network
+    depends_on:
+      - backend
+
+  # pgAdmin (Optional - Web UI for PostgreSQL)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: ai_deadline_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@ai-deadline.local
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_LISTEN_PORT: 80
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - ai_deadline_network
+    depends_on:
+      - postgres
+
+  # n8n Workflow Automation
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: ai_deadline_n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # Basic configuration
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+
+      # Timezone
+      - GENERIC_TIMEZONE=Asia/Ho_Chi_Minh
+      - TZ=Asia/Ho_Chi_Minh
+
+      # Execution data
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=all
+      - EXECUTIONS_DATA_SAVE_ON_ERROR=all
+      - EXECUTIONS_DATA_MAX_AGE=168
+
+      # Backend API URL (now using internal Docker network)
+      - BACKEND_API_URL=http://backend:8000
+
+      # Gemini API Key (add your key here or use .env file)
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+
+      # Email configuration (optional - for sending alerts)
+      - EMAIL_HOST=${EMAIL_HOST:-smtp.gmail.com}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - EMAIL_USER=${EMAIL_USER:-}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD:-}
+      - EMAIL_FROM=${EMAIL_FROM:-noreply@ai-deadline.io.vn}
+
+      # Admin email (for receiving alerts)
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n-workflows:/workflows:ro
+    networks:
+      - ai_deadline_network
+    depends_on:
+      - postgres
+      - backend
+
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+  n8n_data:
+    driver: local
+
+networks:
+  ai_deadline_network:
+    driver: bridge

@@ -70,5 +70,12 @@ htmlcov/
 # Alembic
 alembic/versions/*.pyc
 
+# Docker volumes data (should not commit)
+postgres_data/
+pgadmin_data/
+n8n_data/
+
+
 *.md
 *.sh
+

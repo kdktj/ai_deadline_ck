@@ -38,25 +38,17 @@ def seed_data():
         print("👥 Creating users...")
         users = [
             User(
-                email="admin@ai-deadline.io.vn",
+                email="nhatquang.lvc@gmail.com",
                 username="admin",
-                full_name="System Administrator",
+                full_name="Admin User",
                 password_hash=hash_password("admin123"),
                 role=UserRole.ADMIN,
                 created_at=datetime.utcnow()
             ),
             User(
-                email="nguyen.van.a@company.com",
-                username="nguyenvana",
-                full_name="Nguyễn Văn A",
-                password_hash=hash_password("password123"),
-                role=UserRole.USER,
-                created_at=datetime.utcnow()
-            ),
-            User(
-                email="tran.thi.b@company.com",
-                username="tranthib",
-                full_name="Trần Thị B",
+                email="quanghn.22it@vku.udn.vn",
+                username="quanghn",
+                full_name="Huỳnh Nhật Quang",
                 password_hash=hash_password("password123"),
                 role=UserRole.USER,
                 created_at=datetime.utcnow()
@@ -73,53 +65,13 @@ def seed_data():
         today = datetime.utcnow()
         projects = [
             Project(
-                name="Website Redesign 2024",
-                description="Thiết kế lại giao diện website công ty với UI/UX hiện đại",
-                owner_id=users[1].id,
-                status=ProjectStatus.ACTIVE,
-                start_date=today - timedelta(days=10),
-                end_date=today + timedelta(days=20),
-                created_at=today - timedelta(days=10),
-                updated_at=today
-            ),
-            Project(
-                name="Mobile App Development",
-                description="Phát triển ứng dụng mobile cho iOS và Android",
-                owner_id=users[1].id,
-                status=ProjectStatus.ACTIVE,
-                start_date=today - timedelta(days=15),
-                end_date=today + timedelta(days=45),
-                created_at=today - timedelta(days=15),
-                updated_at=today
-            ),
-            Project(
-                name="AI Chatbot Integration",
-                description="Tích hợp AI chatbot vào hệ thống hỗ trợ khách hàng",
-                owner_id=users[2].id,
+                name="Thi chuyên đề 3 - AI Deadline Forecasting",
+                description="Dự án thi chuyên đề 3: Xây dựng hệ thống quản lý deadline với AI dự đoán rủi ro",
+                owner_id=users[1].id,  # Thuộc về quanghn (users[1])
                 status=ProjectStatus.ACTIVE,
                 start_date=today - timedelta(days=5),
                 end_date=today + timedelta(days=25),
                 created_at=today - timedelta(days=5),
-                updated_at=today
-            ),
-            Project(
-                name="Database Migration",
-                description="Di chuyển database từ MySQL sang PostgreSQL",
-                owner_id=users[2].id,
-                status=ProjectStatus.ON_HOLD,
-                start_date=today - timedelta(days=30),
-                end_date=today + timedelta(days=10),
-                created_at=today - timedelta(days=30),
-                updated_at=today
-            ),
-            Project(
-                name="API Documentation",
-                description="Hoàn thiện tài liệu API cho hệ thống",
-                owner_id=users[1].id,
-                status=ProjectStatus.COMPLETED,
-                start_date=today - timedelta(days=60),
-                end_date=today - timedelta(days=5),
-                created_at=today - timedelta(days=60),
                 updated_at=today
             ),
         ]
@@ -129,197 +81,113 @@ def seed_data():
         db.commit()
         print(f"✅ Created {len(projects)} projects")
         
-        # Create tasks
+        # Create tasks - Mỗi task thuộc về project owner, không có assigned_to
         print("📝 Creating tasks...")
         tasks = [
-            # Website Redesign tasks
+            # Thi chuyên đề 3 tasks (projects[0] thuộc users[1] - Huỳnh Nhật Quang)
             Task(
-                name="Thiết kế mockup trang chủ",
-                description="Tạo mockup cho trang chủ với Figma",
+                name="GIAI ĐOẠN 1: Setup Project & Database",
+                description="Setup Docker, FastAPI, React, PostgreSQL, n8n",
                 project_id=projects[0].id,
-                assigned_to=users[1].id,
                 status=TaskStatus.DONE,
-                priority=TaskPriority.HIGH,
+                priority=TaskPriority.CRITICAL,
                 progress=100.0,
+                estimated_hours=8.0,
+                actual_hours=7.5,
                 deadline=today + timedelta(days=2),
                 last_progress_update=today - timedelta(hours=12),
-                created_at=today - timedelta(days=9)
+                created_at=today - timedelta(days=5)
             ),
             Task(
-                name="Phát triển Frontend trang chủ",
-                description="Code React components cho trang chủ",
+                name="GIAI ĐOẠN 2: Authentication System",
+                description="JWT authentication, user registration, login",
                 project_id=projects[0].id,
-                assigned_to=users[2].id,
-                status=TaskStatus.IN_PROGRESS,
+                status=TaskStatus.DONE,
                 priority=TaskPriority.HIGH,
-                progress=65.0,
+                progress=100.0,
+                estimated_hours=6.0,
+                actual_hours=6.0,
                 deadline=today + timedelta(days=5),
-                last_progress_update=today - timedelta(hours=2),
-                created_at=today - timedelta(days=7)
+                last_progress_update=today - timedelta(hours=8),
+                created_at=today - timedelta(days=4)
             ),
             Task(
-                name="Tích hợp API Backend",
-                description="Kết nối Frontend với API Backend",
+                name="GIAI ĐOẠN 3: Core Features - Projects & Tasks",
+                description="CRUD projects và tasks, Kanban board",
                 project_id=projects[0].id,
-                assigned_to=users[2].id,
-                status=TaskStatus.TODO,
-                priority=TaskPriority.MEDIUM,
-                progress=0.0,
-                deadline=today + timedelta(days=10),
-                last_progress_update=today - timedelta(days=5),
-                created_at=today - timedelta(days=5)
-            ),
-            
-            # Mobile App tasks
-            Task(
-                name="Setup React Native project",
-                description="Khởi tạo project React Native",
-                project_id=projects[1].id,
-                assigned_to=users[1].id,
-                status=TaskStatus.DONE,
-                priority=TaskPriority.CRITICAL,
-                progress=100.0,
-                deadline=today - timedelta(days=5),
-                last_progress_update=today - timedelta(days=6),
-                created_at=today - timedelta(days=15)
-            ),
-            Task(
-                name="Phát triển màn hình đăng nhập",
-                description="UI và logic cho màn hình đăng nhập",
-                project_id=projects[1].id,
-                assigned_to=users[1].id,
                 status=TaskStatus.IN_PROGRESS,
                 priority=TaskPriority.HIGH,
-                progress=80.0,
-                deadline=today + timedelta(days=3),
-                last_progress_update=today - timedelta(hours=4),
-                created_at=today - timedelta(days=10)
-            ),
-            Task(
-                name="Tích hợp Firebase Authentication",
-                description="Setup Firebase cho authentication",
-                project_id=projects[1].id,
-                assigned_to=users[2].id,
-                status=TaskStatus.IN_PROGRESS,
-                priority=TaskPriority.HIGH,
-                progress=40.0,
-                deadline=today + timedelta(days=7),
-                last_progress_update=today - timedelta(hours=18),
-                created_at=today - timedelta(days=8)
-            ),
-            Task(
-                name="Phát triển màn hình Dashboard",
-                description="UI dashboard với charts và stats",
-                project_id=projects[1].id,
-                assigned_to=users[1].id,
-                status=TaskStatus.TODO,
-                priority=TaskPriority.MEDIUM,
-                progress=0.0,
-                deadline=today + timedelta(days=15),
-                last_progress_update=today - timedelta(days=8),
-                created_at=today - timedelta(days=5)
-            ),
-            
-            # AI Chatbot tasks
-            Task(
-                name="Research AI models",
-                description="Nghiên cứu các AI models phù hợp",
-                project_id=projects[2].id,
-                assigned_to=users[2].id,
-                status=TaskStatus.DONE,
-                priority=TaskPriority.HIGH,
-                progress=100.0,
-                deadline=today - timedelta(days=2),
-                last_progress_update=today - timedelta(days=3),
-                created_at=today - timedelta(days=5)
-            ),
-            Task(
-                name="Setup Gemini API integration",
-                description="Tích hợp Gemini API vào backend",
-                project_id=projects[2].id,
-                assigned_to=users[2].id,
-                status=TaskStatus.IN_PROGRESS,
-                priority=TaskPriority.CRITICAL,
-                progress=55.0,
-                deadline=today + timedelta(days=2),
-                last_progress_update=today - timedelta(minutes=30),
+                progress=75.0,
+                estimated_hours=12.0,
+                actual_hours=9.0,
+                deadline=today + timedelta(days=8),
+                last_progress_update=today - timedelta(hours=2),
                 created_at=today - timedelta(days=3)
             ),
             Task(
-                name="Tạo Chat UI component",
-                description="Component giao diện chat trong app",
-                project_id=projects[2].id,
-                assigned_to=users[1].id,
+                name="GIAI ĐOẠN 4: AI Integration - Gemini API",
+                description="Tích hợp Gemini AI để dự đoán rủi ro deadline",
+                project_id=projects[0].id,
                 status=TaskStatus.IN_PROGRESS,
-                priority=TaskPriority.HIGH,
-                progress=30.0,
-                deadline=today + timedelta(days=5),
-                last_progress_update=today - timedelta(hours=6),
+                priority=TaskPriority.CRITICAL,
+                progress=60.0,
+                estimated_hours=10.0,
+                actual_hours=7.0,
+                deadline=today + timedelta(days=10),
+                last_progress_update=today - timedelta(hours=1),
                 created_at=today - timedelta(days=2)
             ),
             Task(
-                name="Testing và Fine-tuning",
-                description="Test chatbot và điều chỉnh prompts",
-                project_id=projects[2].id,
-                assigned_to=users[2].id,
+                name="GIAI ĐOẠN 5: n8n Workflows",
+                description="Tạo 6 workflows automation với n8n",
+                project_id=projects[0].id,
+                status=TaskStatus.IN_PROGRESS,
+                priority=TaskPriority.HIGH,
+                progress=50.0,
+                estimated_hours=15.0,
+                actual_hours=8.0,
+                deadline=today + timedelta(days=12),
+                last_progress_update=today - timedelta(minutes=30),
+                created_at=today - timedelta(days=1)
+            ),
+            Task(
+                name="GIAI ĐOẠN 6: Dashboard & Forecasting",
+                description="Dashboard với charts, forecast logs, simulation",
+                project_id=projects[0].id,
                 status=TaskStatus.TODO,
                 priority=TaskPriority.MEDIUM,
                 progress=0.0,
-                deadline=today + timedelta(days=12),
-                last_progress_update=today - timedelta(days=2),
+                estimated_hours=8.0,
+                actual_hours=0.0,
+                deadline=today + timedelta(days=15),
+                last_progress_update=today - timedelta(days=1),
                 created_at=today - timedelta(days=1)
             ),
-            
-            # Database Migration tasks
             Task(
-                name="Backup MySQL database",
-                description="Full backup trước khi migrate",
-                project_id=projects[3].id,
-                assigned_to=users[1].id,
-                status=TaskStatus.DONE,
-                priority=TaskPriority.CRITICAL,
-                progress=100.0,
-                deadline=today - timedelta(days=15),
-                last_progress_update=today - timedelta(days=16),
-                created_at=today - timedelta(days=25)
+                name="GIAI ĐOẠN 7: Testing & Documentation",
+                description="Viết tests, hoàn thiện documentation",
+                project_id=projects[0].id,
+                status=TaskStatus.TODO,
+                priority=TaskPriority.MEDIUM,
+                progress=0.0,
+                estimated_hours=6.0,
+                actual_hours=0.0,
+                deadline=today + timedelta(days=18),
+                last_progress_update=today - timedelta(days=1),
+                created_at=today - timedelta(days=1)
             ),
             Task(
-                name="Setup PostgreSQL server",
-                description="Cài đặt và config PostgreSQL",
-                project_id=projects[3].id,
-                assigned_to=users[2].id,
+                name="GIAI ĐOẠN 8: Final Deployment & Presentation",
+                description="Deploy production, chuẩn bị báo cáo và slide thuyết trình",
+                project_id=projects[0].id,
                 status=TaskStatus.TODO,
                 priority=TaskPriority.HIGH,
                 progress=0.0,
-                deadline=today + timedelta(days=5),
-                last_progress_update=today - timedelta(days=10),
-                created_at=today - timedelta(days=20)
-            ),
-            
-            # API Documentation tasks
-            Task(
-                name="Viết API documentation",
-                description="Tài liệu tất cả endpoints với OpenAPI",
-                project_id=projects[4].id,
-                assigned_to=users[1].id,
-                status=TaskStatus.DONE,
-                priority=TaskPriority.MEDIUM,
-                progress=100.0,
-                deadline=today - timedelta(days=10),
-                last_progress_update=today - timedelta(days=11),
-                created_at=today - timedelta(days=40)
-            ),
-            Task(
-                name="Deploy documentation site",
-                description="Deploy docs lên hosting",
-                project_id=projects[4].id,
-                assigned_to=users[2].id,
-                status=TaskStatus.DONE,
-                priority=TaskPriority.LOW,
-                progress=100.0,
-                deadline=today - timedelta(days=7),
-                last_progress_update=today - timedelta(days=8),
-                created_at=today - timedelta(days=35)
+                estimated_hours=5.0,
+                actual_hours=0.0,
+                deadline=today + timedelta(days=20),
+                last_progress_update=today - timedelta(days=1),
+                created_at=today - timedelta(days=1)
             ),
         ]
         
@@ -335,8 +203,9 @@ def seed_data():
         print(f"   - Tasks: {len(tasks)}")
         print("\n🔐 Login credentials:")
         print("   Admin: admin / admin123")
-        print("   User 1: nguyenvana / password123")
-        print("   User 2: tranthib / password123")
+        print("   Email: nhatquang.lvc@gmail.com")
+        print("\n   User: quanghn / password123")
+        print("   Email: quanghn.22it@vku.udn.vn")
         
     except Exception as e:
         print(f"❌ Error seeding database: {e}")

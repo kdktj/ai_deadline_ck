@@ -24,15 +24,19 @@ class Task(Base):
     """
     Task model for project tasks.
     
+    Mỗi task thuộc về một project, và project thuộc về một user.
+    Không có assigned_to - mỗi user tự quản lý tasks của mình.
+    
     Attributes:
         id: Primary key
         name: Task name
         description: Task description
         project_id: Foreign key to project
-        assigned_to: Foreign key to user (task assignee)
         status: Task status
         priority: Task priority level
         progress: Task completion percentage (0-100)
+        estimated_hours: Estimated hours to complete the task
+        actual_hours: Actual hours spent on the task
         deadline: Task deadline
         last_progress_update: Last time progress was updated
         created_at: Task creation timestamp
@@ -44,10 +48,11 @@ class Task(Base):
     name = Column(String, nullable=False, index=True)
     description = Column(Text)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
-    assigned_to = Column(Integer, ForeignKey("users.id"))
     status = Column(Enum(TaskStatus), default=TaskStatus.TODO, nullable=False)
     priority = Column(Enum(TaskPriority), default=TaskPriority.MEDIUM, nullable=False)
     progress = Column(Float, default=0.0, nullable=False)  # 0-100
+    estimated_hours = Column(Float, nullable=True)  # Estimated hours to complete
+    actual_hours = Column(Float, nullable=True)  # Actual hours spent
     deadline = Column(DateTime, nullable=False)
     last_progress_update = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -55,5 +60,4 @@ class Task(Base):
     
     # Relationships
     project = relationship("Project", back_populates="tasks")
-    assignee = relationship("User", back_populates="assigned_tasks")
     forecast_logs = relationship("ForecastLog", back_populates="task", cascade="all, delete-orphan")

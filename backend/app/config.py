@@ -41,6 +41,8 @@ class Settings:
             self.FRONTEND_URL,
             "http://localhost:5173",
             "http://localhost:3000",
+            "http://frontend:5173",  # Docker internal network
+            "http://0.0.0.0:5173",
         ]
 
 settings = Settings()
