@@ -211,7 +211,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={\n  \"workflow_name\": \"Quick Progress Forecast\",\n  \"status\": \"success\",\n  \"input_data\": {\"message\": \"Email alert sent\"},\n  \"output_data\": {\"task_id\": {{$json.taskId}}, \"risk_level\": {{JSON.stringify($json.riskLevel)}}}\n}",
+        "jsonBody": "={\n  \"workflow_name\": \"Quick Progress Forecast\",\n  \"status\": \"success\",\n  \"input_data\": {\"message\": \"Email alert sent\"},\n  \"output_data\": {\"task_id\": {{$node['Function: Prepare Email Data'].json.taskId || 0}}, \"risk_level\": {{JSON.stringify($node['Function: Prepare Email Data'].json.riskLevel || 'unknown')}}}\n}",
         "options": {}
       },
       "name": "HTTP: Log Success",
