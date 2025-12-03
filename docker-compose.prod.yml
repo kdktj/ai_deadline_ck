@@ -1,0 +1,196 @@
+version: "3.8"
+
+# =============================================================================
+# PRODUCTION DOCKER COMPOSE - AI Deadline Forecasting Agent
+# =============================================================================
+# Sử dụng cho môi trường production trên Google Cloud VM
+# Domain: ai-deadline.io.vn
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # NGINX REVERSE PROXY + SSL
+  # ===========================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: ai_deadline_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    networks:
+      - ai_deadline_network
+    depends_on:
+      - backend
+      - frontend
+      - n8n
+    command: '/bin/sh -c ''while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g "daemon off;"'''
+
+  # ===========================================================================
+  # CERTBOT - SSL Certificate Manager (Let's Encrypt)
+  # ===========================================================================
+  certbot:
+    image: certbot/certbot
+    container_name: ai_deadline_certbot
+    restart: unless-stopped
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+  # ===========================================================================
+  # PostgreSQL Database
+  # ===========================================================================
+  postgres:
+    image: postgres:14-alpine
+    container_name: ai_deadline_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ai_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_deadline}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ai_deadline_network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-ai_user} -d ${POSTGRES_DB:-ai_deadline}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Không expose port 5432 ra ngoài trong production
+
+  # ===========================================================================
+  # Backend API (FastAPI)
+  # ===========================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: ai_deadline_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ai_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_deadline}
+      SECRET_KEY: ${SECRET_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      FRONTEND_URL: https://ai-deadline.io.vn
+      N8N_WEBHOOK_URL: http://n8n:5678
+      ENVIRONMENT: production
+    networks:
+      - ai_deadline_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo '⏳ Waiting for database...' &&
+        sleep 5 &&
+        echo '🔄 Running database migrations...' &&
+        alembic upgrade head &&
+        echo '🚀 Starting backend server in production mode...' &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+      "
+
+  # ===========================================================================
+  # Frontend (React + Vite - Production Build)
+  # ===========================================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_URL: https://api.ai-deadline.io.vn
+    container_name: ai_deadline_frontend
+    restart: unless-stopped
+    networks:
+      - ai_deadline_network
+    depends_on:
+      - backend
+
+  # ===========================================================================
+  # n8n Workflow Automation
+  # ===========================================================================
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: ai_deadline_n8n
+    restart: unless-stopped
+    environment:
+      # Basic configuration
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - N8N_SECURE_COOKIE=true
+      - WEBHOOK_URL=https://n8n.ai-deadline.io.vn/
+
+      # Timezone
+      - GENERIC_TIMEZONE=Asia/Ho_Chi_Minh
+      - TZ=Asia/Ho_Chi_Minh
+
+      # Execution data
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=all
+      - EXECUTIONS_DATA_SAVE_ON_ERROR=all
+      - EXECUTIONS_DATA_MAX_AGE=168
+
+      # Backend API URL (internal Docker network)
+      - BACKEND_API_URL=http://backend:8000
+
+      # Gemini API Key
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+
+      # Email configuration
+      - EMAIL_HOST=${EMAIL_HOST:-smtp.gmail.com}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - EMAIL_USER=${EMAIL_USER}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - EMAIL_FROM=${EMAIL_FROM:-noreply@ai-deadline.io.vn}
+
+      # Admin email
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n-workflows:/workflows:ro
+    networks:
+      - ai_deadline_network
+    depends_on:
+      - postgres
+      - backend
+
+  # ===========================================================================
+  # pgAdmin (Optional - Web UI for PostgreSQL)
+  # Có thể comment out nếu không cần trong production
+  # ===========================================================================
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   container_name: ai_deadline_pgadmin
+  #   restart: unless-stopped
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@ai-deadline.io.vn}
+  #     PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+  #   volumes:
+  #     - pgadmin_data:/var/lib/pgadmin
+  #   networks:
+  #     - ai_deadline_network
+  #   depends_on:
+  #     - postgres
+
+volumes:
+  postgres_data:
+    driver: local
+  n8n_data:
+    driver: local
+  # pgadmin_data:
+  #   driver: local
+
+networks:
+  ai_deadline_network:
+    driver: bridge

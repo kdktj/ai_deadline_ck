@@ -11,6 +11,9 @@ load_dotenv()
 class Settings:
     """Application settings and configuration"""
     
+    # Environment
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://localhost:5432/ai_deadline")
     
@@ -35,14 +38,29 @@ class Settings:
     APP_VERSION: str = "1.0.0"
     
     @property
+    def is_production(self) -> bool:
+        """Check if running in production environment"""
+        return self.ENVIRONMENT.lower() == "production"
+    
+    @property
     def allowed_origins(self):
         """Get list of allowed CORS origins"""
-        return [
+        origins = [
             self.FRONTEND_URL,
             "http://localhost:5173",
             "http://localhost:3000",
             "http://frontend:5173",  # Docker internal network
             "http://0.0.0.0:5173",
         ]
+        
+        # Add production domains
+        if self.is_production:
+            origins.extend([
+                "https://ai-deadline.io.vn",
+                "https://www.ai-deadline.io.vn",
+                "https://api.ai-deadline.io.vn",
+            ])
+        
+        return origins
 
 settings = Settings()
