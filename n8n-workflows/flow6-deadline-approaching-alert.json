@@ -1,0 +1,239 @@
+{
+  "name": "Flow 8 - Deadline Approaching Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "name": "Cron Trigger (Every 6 hours)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/tasks",
+        "authentication": "none",
+        "options": {}
+      },
+      "name": "HTTP: Get All Tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Find tasks with deadlines approaching (24h or 48h)\nconst response = $input.first().json;\nconst tasks = response.tasks || [];\nconst now = new Date();\nconst in24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);\nconst in48Hours = new Date(now.getTime() + 48 * 60 * 60 * 1000);\n\nconst urgentTasks = [];\n\nfor (const task of tasks) {\n  // Skip completed tasks\n  if (task.status === 'done') continue;\n  \n  if (!task.deadline) continue;\n  \n  const deadline = new Date(task.deadline);\n  \n  // Check if deadline is within 48 hours AND not already passed\n  if (deadline > now && deadline <= in48Hours) {\n    const hoursLeft = Math.round((deadline - now) / (60 * 60 * 1000));\n    \n    urgentTasks.push({\n      ...task,\n      hours_left: hoursLeft,\n      urgency: hoursLeft <= 24 ? 'critical' : 'warning',\n      urgency_label: hoursLeft <= 24 ? '🔴 Dưới 24 giờ' : '🟠 Dưới 48 giờ'\n    });\n  }\n}\n\nif (urgentTasks.length === 0) {\n  return [];\n}\n\n// Group by owner\nconst ownerMap = new Map();\n\nfor (const task of urgentTasks) {\n  const ownerId = task.owner_id;\n  if (!ownerId) continue;\n  \n  if (!ownerMap.has(ownerId)) {\n    ownerMap.set(ownerId, {\n      owner_id: ownerId,\n      owner_name: task.owner_name,\n      critical_tasks: [],\n      warning_tasks: []\n    });\n  }\n  \n  const ownerData = ownerMap.get(ownerId);\n  if (task.urgency === 'critical') {\n    ownerData.critical_tasks.push(task);\n  } else {\n    ownerData.warning_tasks.push(task);\n  }\n}\n\nreturn Array.from(ownerMap.values()).map(owner => ({ json: owner }));"
+      },
+      "name": "Function: Find Approaching Deadlines",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "name": "Split Into Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/user-email/{{$json.owner_id}}",
+        "authentication": "none",
+        "options": {}
+      },
+      "name": "HTTP: Get Owner Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.owner_email}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "IF: Has Email",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Prepare deadline alert email\nconst ownerInfo = $input.first().json;\nconst previousData = $node['Split Into Items'].json;\n\nconst criticalTasks = previousData.critical_tasks || [];\nconst warningTasks = previousData.warning_tasks || [];\n\nconst formatTaskList = (tasks) => {\n  if (tasks.length === 0) return '';\n  return tasks.map(t => {\n    const deadlineDate = new Date(t.deadline);\n    const formattedDeadline = deadlineDate.toLocaleString('vi-VN', {\n      day: '2-digit',\n      month: '2-digit',\n      year: 'numeric',\n      hour: '2-digit',\n      minute: '2-digit'\n    });\n    return `<tr>\n      <td style=\"padding: 10px; border-bottom: 1px solid #eee;\">\n        <strong>${t.name}</strong><br>\n        <small style=\"color: #666;\">Dự án: ${t.project_name || 'N/A'}</small>\n      </td>\n      <td style=\"padding: 10px; border-bottom: 1px solid #eee; text-align: center;\">${t.progress || 0}%</td>\n      <td style=\"padding: 10px; border-bottom: 1px solid #eee; text-align: center;\">\n        <span style=\"color: ${t.urgency === 'critical' ? '#ef4444' : '#f97316'}; font-weight: bold;\">\n          ${t.hours_left}h\n        </span>\n      </td>\n      <td style=\"padding: 10px; border-bottom: 1px solid #eee;\">${formattedDeadline}</td>\n    </tr>`;\n  }).join('');\n};\n\nconst criticalHtml = formatTaskList(criticalTasks);\nconst warningHtml = formatTaskList(warningTasks);\n\nreturn {\n  json: {\n    owner_email: ownerInfo.owner_email,\n    owner_name: ownerInfo.owner_name || 'Bạn',\n    critical_count: criticalTasks.length,\n    warning_count: warningTasks.length,\n    critical_html: criticalHtml,\n    warning_html: warningHtml,\n    total_urgent: criticalTasks.length + warningTasks.length,\n    has_critical: criticalTasks.length > 0\n  }\n};"
+      },
+      "name": "Function: Format Alert Email",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.EMAIL_FROM}}",
+        "toEmail": "={{$json.owner_email}}",
+        "subject": "={{$json.has_critical ? '🔴 KHẨN CẤP' : '🟠 CẢNH BÁO'}}: {{$json.total_urgent}} tasks của bạn sắp đến deadline!",
+        "emailType": "html",
+        "text": "=Xin chào {{$json.owner_name}}!\n\n⚠️ CẢNH BÁO DEADLINE SẮP ĐẾN\n\nBạn có {{$json.total_urgent}} tasks CÁ NHÂN sắp đến deadline:\n- 🔴 Dưới 24 giờ: {{$json.critical_count}} tasks\n- 🟠 Dưới 48 giờ: {{$json.warning_count}} tasks\n\nHãy kiểm tra và cập nhật tiến độ ngay!\n\nTruy cập: http://localhost:5173/tasks\n\n---\nEmail tự động từ AI Deadline - Công cụ quản lý deadline CÁ NHÂN của bạn",
+        "html": "=<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 650px; margin: 0 auto; padding: 20px; }\n    .header { background: {{$json.has_critical ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' : 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)'}}; color: white; padding: 25px; text-align: center; border-radius: 10px 10px 0 0; }\n    .content { background: #f9f9f9; padding: 25px; }\n    .section { background: white; border-radius: 8px; margin: 15px 0; overflow: hidden; }\n    .section-header { padding: 15px; font-weight: bold; border-bottom: 1px solid #eee; }\n    .critical-header { background: #fef2f2; color: #991b1b; }\n    .warning-header { background: #fff7ed; color: #9a3412; }\n    table { width: 100%; border-collapse: collapse; }\n    th { background: #f3f4f6; padding: 10px; text-align: left; font-size: 12px; text-transform: uppercase; }\n    .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; background: #f9f9f9; border-radius: 0 0 10px 10px; }\n  </style>\n</head>\n<body>\n  <div class='container'>\n    <div class='header'>\n      <h1>{{$json.has_critical ? '🔴 KHẨN CẤP: DEADLINE SẮP ĐẾN!' : '🟠 CẢNH BÁO: DEADLINE SẮP ĐẾN'}}</h1>\n      <p style='margin: 0; opacity: 0.9;'>Xin chào {{$json.owner_name}}! Bạn có {{$json.total_urgent}} tasks CÁ NHÂN cần chú ý</p>\n    </div>\n    <div class='content'>\n      \n      {{#if $json.critical_count}}\n      <div class='section'>\n        <div class='section-header critical-header'>\n          🔴 DƯỚI 24 GIỜ ({{$json.critical_count}} tasks)\n        </div>\n        <table>\n          <thead>\n            <tr>\n              <th>Task</th>\n              <th style='text-align: center;'>Tiến độ</th>\n              <th style='text-align: center;'>Còn lại</th>\n              <th>Deadline</th>\n            </tr>\n          </thead>\n          <tbody>\n            {{$json.critical_html}}\n          </tbody>\n        </table>\n      </div>\n      {{/if}}\n      \n      {{#if $json.warning_count}}\n      <div class='section'>\n        <div class='section-header warning-header'>\n          🟠 DƯỚI 48 GIỜ ({{$json.warning_count}} tasks)\n        </div>\n        <table>\n          <thead>\n            <tr>\n              <th>Task</th>\n              <th style='text-align: center;'>Tiến độ</th>\n              <th style='text-align: center;'>Còn lại</th>\n              <th>Deadline</th>\n            </tr>\n          </thead>\n          <tbody>\n            {{$json.warning_html}}\n          </tbody>\n        </table>\n      </div>\n      {{/if}}\n      \n      <div style='background: #ecfdf5; border: 1px solid #10b981; border-radius: 8px; padding: 15px; margin-top: 20px;'>\n        <strong>💡 Gợi ý:</strong>\n        <ul style='margin: 10px 0 0 0; padding-left: 20px;'>\n          <li>Ưu tiên hoàn thành tasks 🔴 trước</li>\n          <li>Cập nhật tiến độ để hệ thống theo dõi chính xác hơn</li>\n          <li>Nếu cần thêm thời gian, hãy điều chỉnh deadline sớm</li>\n        </ul>\n      </div>\n      \n      <div style='text-align: center; margin-top: 25px;'>\n        <a href='http://localhost:5173/tasks' style='display: inline-block; background: {{$json.has_critical ? \"#ef4444\" : \"#f97316\"}}; color: white; padding: 14px 35px; text-decoration: none; border-radius: 25px; font-weight: bold;'>\n          Xem Tasks của bạn ngay →\n        </a>\n      </div>\n    </div>\n    <div class='footer'>\n      <p>Email tự động từ <strong>AI Deadline Forecasting Agent</strong></p>\n      <p><em>Công cụ quản lý deadline CÁ NHÂN của bạn</em></p>\n    </div>\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "name": "Send Email: Deadline Alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1780, 300],
+      "credentials": {
+        "smtp": {
+          "id": "1",
+          "name": "SMTP Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/automation-log",
+        "authentication": "none",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "workflow_name",
+              "value": "Deadline Approaching Alert"
+            },
+            {
+              "name": "status",
+              "value": "success"
+            },
+            {
+              "name": "input_data",
+              "value": "={{JSON.stringify({owner_email: $json.owner_email})}}"
+            },
+            {
+              "name": "output_data",
+              "value": "={{JSON.stringify({critical: $json.critical_count, warning: $json.warning_count})}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "HTTP: Log to Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [2000, 300]
+    }
+  ],
+  "connections": {
+    "Cron Trigger (Every 6 hours)": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Get All Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Get All Tasks": {
+      "main": [
+        [
+          {
+            "node": "Function: Find Approaching Deadlines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function: Find Approaching Deadlines": {
+      "main": [
+        [
+          {
+            "node": "Split Into Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Into Items": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Get Owner Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Get Owner Email": {
+      "main": [
+        [
+          {
+            "node": "IF: Has Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Has Email": {
+      "main": [
+        [
+          {
+            "node": "Function: Format Alert Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function: Format Alert Email": {
+      "main": [
+        [
+          {
+            "node": "Send Email: Deadline Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email: Deadline Alert": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Log to Backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "8",
+  "id": "8",
+  "meta": {
+    "instanceId": "ai_deadline_n8n"
+  },
+  "tags": []
+}
