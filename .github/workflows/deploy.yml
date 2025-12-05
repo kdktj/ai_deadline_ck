@@ -189,6 +189,38 @@ jobs:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
 
+      - name: ✅ Validate Required Secrets
+        run: |
+          missing_secrets=""
+          
+          if [ -z "${{ secrets.SERVER_IP }}" ]; then
+            missing_secrets="$missing_secrets SERVER_IP"
+          fi
+          
+          if [ -z "${{ secrets.SERVER_USER }}" ]; then
+            missing_secrets="$missing_secrets SERVER_USER"
+          fi
+          
+          if [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
+            missing_secrets="$missing_secrets SSH_PRIVATE_KEY"
+          fi
+          
+          if [ -n "$missing_secrets" ]; then
+            echo "❌ ERROR: The following required secrets are missing or empty:"
+            echo "$missing_secrets"
+            echo ""
+            echo "Please add these secrets in GitHub repository settings:"
+            echo "Settings → Secrets and variables → Actions → New repository secret"
+            echo ""
+            echo "Required secrets:"
+            echo "  - SERVER_IP: Your VPS/Server IP address (e.g., 34.126.xxx.xxx)"
+            echo "  - SERVER_USER: SSH username for the server"
+            echo "  - SSH_PRIVATE_KEY: Private SSH key for authentication"
+            exit 1
+          fi
+          
+          echo "✅ All required secrets are configured"
+
       - name: 🔐 Setup SSH Key
         run: |
           mkdir -p ~/.ssh
