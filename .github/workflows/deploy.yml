@@ -236,19 +236,29 @@ jobs:
             # Pull latest code
             git pull origin main
             
-            # Pull latest images from GHCR
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            
-            # Update and restart services
-            docker compose -f docker-compose.prod.yml pull
+            # Build and restart services (build trực tiếp trên server)
+            docker compose -f docker-compose.prod.yml build --no-cache
             docker compose -f docker-compose.prod.yml up -d --force-recreate
             
-            # Run migrations
-            docker exec ai_deadline_backend alembic upgrade head
+            # Wait for services to start
+            echo "⏳ Waiting for services to start..."
+            sleep 30
             
-            # Health check
-            sleep 10
-            curl -f http://localhost:8000/health || exit 1
+            # Health check via docker exec (vì port 8000 không expose ra host)
+            echo "🏥 Running health check..."
+            for i in 1 2 3 4 5; do
+              if docker exec ai_deadline_backend curl -sf http://localhost:8000/health; then
+                echo ""
+                echo "✅ Health check passed!"
+                break
+              fi
+              if [ $i -eq 5 ]; then
+                echo "❌ Health check failed after 5 attempts"
+                exit 1
+              fi
+              echo "Attempt $i failed, retrying in 10s..."
+              sleep 10
+            done
             
             # Cleanup old images
             docker image prune -f
