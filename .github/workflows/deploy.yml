@@ -231,7 +231,7 @@ jobs:
       - name: 🚀 Deploy to Server
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'ENDSSH'
-            cd /opt/ai-deadline
+            cd /opt/ai-deadline/ai_deadline_ck
             
             # Pull latest code
             git pull origin main
