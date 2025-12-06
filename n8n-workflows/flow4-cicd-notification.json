@@ -37,7 +37,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extract deployment data from webhook\nconst webhookData = $input.first().json;\n\n// Get data from webhook body\nconst service = webhookData.service || 'unknown';\nconst status = webhookData.status || 'success';\nconst commitSha = webhookData.commit_sha || '';\nconst commitMessage = webhookData.commit_message || '';\nconst deployedAt = webhookData.deployed_at || new Date().toISOString();\nconst deployedBy = webhookData.deployed_by || 'GitHub Actions';\nconst branch = webhookData.branch || 'main';\n\nreturn {\n  json: {\n    service,\n    status,\n    commit_sha: commitSha,\n    commit_message: commitMessage,\n    deployed_at: deployedAt,\n    deployed_by: deployedBy,\n    branch,\n    is_success: status === 'success'\n  }\n};"
+        "jsCode": "// Extract deployment data from webhook\nconst webhookData = $input.first().json;\n\n// n8n webhook v2 wraps body data in 'body' property\nconst body = webhookData.body || webhookData;\n\nconst service = body.service || 'unknown';\nconst status = body.status || 'success';\nconst commitSha = body.commit_sha || '';\nconst commitMessage = body.commit_message || '';\nconst deployedAt = body.deployed_at || new Date().toISOString();\nconst deployedBy = body.deployed_by || 'GitHub Actions';\nconst branch = body.branch || 'main';\n\nreturn {\n  json: {\n    service,\n    status,\n    commit_sha: commitSha,\n    commit_message: commitMessage,\n    deployed_at: deployedAt,\n    deployed_by: deployedBy,\n    branch,\n    is_success: status === 'success'\n  }\n};"
       },
       "id": "code-extract-success",
       "name": "Extract Success Data",
@@ -50,7 +50,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extract deployment failure data from webhook\nconst webhookData = $input.first().json;\n\n// Get data from webhook body\nconst service = webhookData.service || 'unknown';\nconst status = webhookData.status || 'failed';\nconst commitSha = webhookData.commit_sha || '';\nconst error = webhookData.error || 'Unknown error';\nconst failedAt = webhookData.failed_at || new Date().toISOString();\nconst branch = webhookData.branch || 'main';\n\nreturn {\n  json: {\n    service,\n    status,\n    commit_sha: commitSha,\n    error,\n    failed_at: failedAt,\n    branch,\n    is_success: false\n  }\n};"
+        "jsCode": "// Extract deployment failure data from webhook\nconst webhookData = $input.first().json;\n\n// n8n webhook v2 wraps body data in 'body' property\nconst body = webhookData.body || webhookData;\n\nconst service = body.service || 'unknown';\nconst status = body.status || 'failed';\nconst commitSha = body.commit_sha || '';\nconst error = body.error || 'Unknown error';\nconst failedAt = body.failed_at || new Date().toISOString();\nconst branch = body.branch || 'main';\n\nreturn {\n  json: {\n    service,\n    status,\n    commit_sha: commitSha,\n    error,\n    failed_at: failedAt,\n    branch,\n    is_success: false\n  }\n};"
       },
       "id": "code-extract-failed",
       "name": "Extract Failed Data",
