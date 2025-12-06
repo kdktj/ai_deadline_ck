@@ -15,7 +15,10 @@
       "name": "Cron Trigger (Every 1 minute)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1,
-      "position": [240, 300]
+      "position": [
+        240,
+        300
+      ]
     },
     {
       "parameters": {
@@ -26,7 +29,10 @@
       "name": "HTTP: Get Projects",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [460, 300]
+      "position": [
+        460,
+        300
+      ]
     },
     {
       "parameters": {
@@ -37,7 +43,10 @@
       "name": "HTTP: Get Tasks",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [680, 300]
+      "position": [
+        680,
+        300
+      ]
     },
     {
       "parameters": {
@@ -46,7 +55,10 @@
       "name": "Function: Prepare AI Prompt",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [900, 300]
+      "position": [
+        900,
+        300
+      ]
     },
     {
       "parameters": {
@@ -62,11 +74,14 @@
       "name": "IF: Has Tasks",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [1100, 300]
+      "position": [
+        1100,
+        300
+      ]
     },
     {
       "parameters": {
-        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={{$env.GEMINI_API_KEY}}",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={{$env.GEMINI_API_KEY}}",
         "authentication": "none",
         "method": "POST",
         "sendBody": true,
@@ -93,7 +108,10 @@
       "name": "HTTP: Gemini API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [1320, 200]
+      "position": [
+        1320,
+        200
+      ]
     },
     {
       "parameters": {
@@ -102,7 +120,10 @@
       "name": "Function: Parse AI Response",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1540, 200]
+      "position": [
+        1540,
+        200
+      ]
     },
     {
       "parameters": {
@@ -118,7 +139,10 @@
       "name": "IF: Has Results",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [1760, 200]
+      "position": [
+        1760,
+        200
+      ]
     },
     {
       "parameters": {
@@ -134,7 +158,10 @@
       "name": "HTTP: Save Forecast",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [1980, 100]
+      "position": [
+        1980,
+        100
+      ]
     },
     {
       "parameters": {
@@ -143,7 +170,10 @@
       "name": "Function: Restore Data",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [2200, 100]
+      "position": [
+        2200,
+        100
+      ]
     },
     {
       "parameters": {
@@ -160,7 +190,10 @@
       "name": "IF: High Risk Detected",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [2420, 100]
+      "position": [
+        2420,
+        100
+      ]
     },
     {
       "parameters": {
@@ -171,7 +204,10 @@
       "name": "HTTP: Get Task Owner Email",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [2640, 100]
+      "position": [
+        2640,
+        100
+      ]
     },
     {
       "parameters": {
@@ -180,7 +216,10 @@
       "name": "Function: Prepare Email Data",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [2860, 100]
+      "position": [
+        2860,
+        100
+      ]
     },
     {
       "parameters": {
@@ -195,7 +234,10 @@
       "name": "Send Email: Alert to Owner",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2,
-      "position": [3080, 100],
+      "position": [
+        3080,
+        100
+      ],
       "credentials": {
         "smtp": {
           "id": "1",
@@ -217,7 +259,10 @@
       "name": "HTTP: Log Success",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [3300, 100]
+      "position": [
+        3300,
+        100
+      ]
     }
   ],
   "connections": {

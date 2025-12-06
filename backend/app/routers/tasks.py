@@ -5,6 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime
+import httpx
+import os
+import logging
 
 from app.database import get_db
 from app.models.user import User
@@ -14,7 +17,38 @@ from app.schemas.task import TaskCreate, TaskUpdate, TaskProgressUpdate, TaskRes
 from app.schemas.auth import MessageResponse
 from app.utils.auth import get_current_user
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+
+
+async def notify_task_completed(task_id: int, actual_hours: Optional[float] = None):
+    """
+    Gửi thông báo đến n8n webhook khi task được hoàn thành.
+    Flow 8 - Task Completion Celebration sẽ xử lý và gửi email chúc mừng.
+    """
+    n8n_webhook_url = os.getenv("N8N_WEBHOOK_URL", "http://n8n:5678")
+    webhook_endpoint = f"{n8n_webhook_url}/webhook/n8n/task-completed"
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                webhook_endpoint,
+                json={
+                    "task_id": task_id,
+                    "actual_hours": actual_hours
+                }
+            )
+            if response.status_code == 200:
+                logger.info(f"Successfully notified n8n about task {task_id} completion")
+            else:
+                logger.warning(f"n8n webhook returned status {response.status_code}: {response.text}")
+    except httpx.RequestError as e:
+        # Log error but don't fail the task update
+        logger.error(f"Failed to notify n8n about task completion: {str(e)}")
+    except Exception as e:
+        logger.error(f"Unexpected error notifying n8n: {str(e)}")
+
 
 @router.get("", response_model=TaskListResponse)
 async def get_tasks(
@@ -293,11 +327,14 @@ async def update_task(
     # Check authorization - chỉ project owner mới sửa được
     project = db.query(Project).filter(Project.id == task.project_id).first()
     if current_user.role != "admin":
-        if not project or project.owner_id != current_user.id:
+            if not project or project.owner_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Không có quyền chỉnh sửa task này"
             )
+    
+    # Track if task was already done (to avoid duplicate notifications)
+    was_done = task.status == TaskStatus.DONE
     
     # Update fields
     update_data = task_data.model_dump(exclude_unset=True)
@@ -322,6 +359,10 @@ async def update_task(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Giá trị không hợp lệ: {str(e)}"
         )
+    
+    # Notify n8n if task was just completed (status changed to done)
+    if not was_done and task.status == TaskStatus.DONE:
+        await notify_task_completed(task.id, task.actual_hours)
     
     # Build response
     project_name = project.name if project else None
@@ -390,18 +431,27 @@ async def update_task_progress(
                 detail="Không có quyền cập nhật task này"
             )
     
+    # Track if task was already done (to avoid duplicate notifications)
+    was_done = task.status == TaskStatus.DONE
+    
     # Update progress and timestamp
     task.progress = progress_data.progress
     task.last_progress_update = datetime.utcnow()
     
     # Auto-update status based on progress
+    task_just_completed = False
     if progress_data.progress == 100 and task.status != TaskStatus.DONE:
         task.status = TaskStatus.DONE
+        task_just_completed = True
     elif progress_data.progress > 0 and task.status == TaskStatus.TODO:
         task.status = TaskStatus.IN_PROGRESS
     
     db.commit()
     db.refresh(task)
+    
+    # Notify n8n if task was just completed
+    if task_just_completed and not was_done:
+        await notify_task_completed(task.id, task.actual_hours)
     
     # Build response
     project_name = project.name if project else None

@@ -7,7 +7,9 @@
           "interval": [
             {
               "field": "weeks",
-              "triggerAtDay": [0],
+              "triggerAtDay": [
+                0
+              ],
               "triggerAtHour": 19
             }
           ]
@@ -16,7 +18,10 @@
       "name": "Cron Trigger (Sunday 7PM)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1,
-      "position": [240, 300]
+      "position": [
+        240,
+        300
+      ]
     },
     {
       "parameters": {
@@ -27,7 +32,10 @@
       "name": "HTTP: Get All Tasks",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [460, 300]
+      "position": [
+        460,
+        300
+      ]
     },
     {
       "parameters": {
@@ -38,7 +46,10 @@
       "name": "HTTP: Get Forecasts",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [680, 300]
+      "position": [
+        680,
+        300
+      ]
     },
     {
       "parameters": {
@@ -47,7 +58,10 @@
       "name": "Function: Calculate Weekly Stats",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [900, 300]
+      "position": [
+        900,
+        300
+      ]
     },
     {
       "parameters": {
@@ -57,7 +71,10 @@
       "name": "Split Into Items",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 1,
-      "position": [1120, 300]
+      "position": [
+        1120,
+        300
+      ]
     },
     {
       "parameters": {
@@ -68,7 +85,10 @@
       "name": "HTTP: Get Owner Email",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [1340, 300]
+      "position": [
+        1340,
+        300
+      ]
     },
     {
       "parameters": {
@@ -84,7 +104,10 @@
       "name": "IF: Has Email",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [1560, 300]
+      "position": [
+        1560,
+        300
+      ]
     },
     {
       "parameters": {
@@ -93,7 +116,10 @@
       "name": "Function: Build AI Prompt",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [1780, 300]
+      "position": [
+        1780,
+        300
+      ]
     },
     {
       "parameters": {
@@ -124,7 +150,10 @@
       "name": "HTTP: Gemini API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [2000, 300]
+      "position": [
+        2000,
+        300
+      ]
     },
     {
       "parameters": {
@@ -133,13 +162,16 @@
       "name": "Function: Parse AI Response",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [2220, 300]
+      "position": [
+        2220,
+        300
+      ]
     },
     {
       "parameters": {
         "fromEmail": "={{$env.EMAIL_FROM}}",
         "toEmail": "={{$json.owner_email}}",
-        "subject": "📊 Báo cáo tuần của bạn - Hoàn thành {{$json.completion_rate}}%",
+        "subject": "=📊 Báo cáo tuần của bạn - Hoàn thành {{ $json.completion_rate }}%",
         "emailType": "html",
         "text": "=Xin chào {{$json.owner_name}}!\n\nĐây là báo cáo tuần CÁ NHÂN của bạn:\n\n📈 THỐNG KÊ TỔNG QUAN:\n- Tỷ lệ hoàn thành: {{$json.completion_rate}}%\n- Tổng tasks: {{$json.total_tasks}}\n- Hoàn thành: {{$json.done_tasks}}\n- Đang làm: {{$json.in_progress_tasks}}\n- Chưa bắt đầu: {{$json.todo_tasks}}\n\n📅 TUẦN NÀY:\n- Hoàn thành: {{$json.completed_this_week}} tasks\n- Tạo mới: {{$json.created_this_week}} tasks\n\n⚠️ CẦN CHÚ Ý:\n- Quá hạn: {{$json.overdue_count}} tasks\n- Deadline tuần tới: {{$json.upcoming_count}} tasks\n- Rủi ro cao: {{$json.high_risk_count}} tasks\n\n🤖 GỢI Ý TỪ AI:\n{{$json.ai_advice}}\n\nChúc bạn một tuần mới hiệu quả! 💪\n\n---\nEmail tự động từ AI Deadline - Công cụ quản lý deadline CÁ NHÂN của bạn",
         "html": "=<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 650px; margin: 0 auto; padding: 20px; }\n    .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }\n    .content { background: #f9f9f9; padding: 25px; }\n    .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 20px 0; }\n    .stat-card { background: white; padding: 20px; border-radius: 10px; text-align: center; }\n    .stat-value { font-size: 32px; font-weight: bold; }\n    .stat-label { font-size: 12px; color: #666; margin-top: 5px; }\n    .progress-bar { background: #e5e7eb; border-radius: 10px; height: 20px; overflow: hidden; margin: 10px 0; }\n    .progress-fill { background: linear-gradient(90deg, #10b981 0%, #059669 100%); height: 100%; transition: width 0.3s; }\n    .section { background: white; border-radius: 10px; padding: 20px; margin: 15px 0; }\n    .section-title { font-weight: bold; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }\n    .ai-box { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 10px; padding: 20px; margin: 20px 0; }\n    .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; background: #f9f9f9; border-radius: 0 0 10px 10px; }\n    ul { margin: 0; padding-left: 20px; }\n    li { margin: 5px 0; }\n  </style>\n</head>\n<body>\n  <div class='container'>\n    <div class='header'>\n      <h1>📊 Báo cáo Tuần của Bạn</h1>\n      <p style='margin: 0; opacity: 0.9;'>Xin chào {{$json.owner_name}}! Đây là tổng kết tuần của bạn</p>\n    </div>\n    <div class='content'>\n      \n      <!-- Completion Rate -->\n      <div class='section'>\n        <div class='section-title'>🎯 Tỷ lệ hoàn thành</div>\n        <div class='progress-bar'>\n          <div class='progress-fill' style='width: {{$json.completion_rate}}%;'></div>\n        </div>\n        <div style='text-align: center; font-size: 24px; font-weight: bold; color: #10b981;'>\n          {{$json.completion_rate}}%\n        </div>\n      </div>\n      \n      <!-- Stats Grid -->\n      <div class='stats-grid'>\n        <div class='stat-card'>\n          <div class='stat-value' style='color: #10b981;'>{{$json.done_tasks}}</div>\n          <div class='stat-label'>✅ Hoàn thành</div>\n        </div>\n        <div class='stat-card'>\n          <div class='stat-value' style='color: #3b82f6;'>{{$json.in_progress_tasks}}</div>\n          <div class='stat-label'>🔵 Đang làm</div>\n        </div>\n        <div class='stat-card'>\n          <div class='stat-value' style='color: #9ca3af;'>{{$json.todo_tasks}}</div>\n          <div class='stat-label'>⚪ Chưa bắt đầu</div>\n        </div>\n        <div class='stat-card'>\n          <div class='stat-value' style='color: #ef4444;'>{{$json.overdue_count}}</div>\n          <div class='stat-label'>🔴 Quá hạn</div>\n        </div>\n      </div>\n      \n      <!-- This Week Summary -->\n      <div class='section'>\n        <div class='section-title'>📅 Tuần này</div>\n        <p>✅ Hoàn thành <strong>{{$json.completed_this_week}}</strong> tasks</p>\n        <p>➕ Tạo mới <strong>{{$json.created_this_week}}</strong> tasks</p>\n      </div>\n      \n      <!-- Upcoming Deadlines -->\n      <div class='section'>\n        <div class='section-title'>🗓️ Deadline tuần tới ({{$json.upcoming_count}})</div>\n        <ul>{{$json.upcoming_html}}</ul>\n      </div>\n      \n      {{#if $json.overdue_count}}\n      <div class='section' style='border-left: 4px solid #ef4444;'>\n        <div class='section-title'>⚠️ Tasks quá hạn ({{$json.overdue_count}})</div>\n        <ul>{{$json.overdue_html}}</ul>\n      </div>\n      {{/if}}\n      \n      <!-- AI Advice -->\n      <div class='ai-box'>\n        <div style='font-weight: bold; margin-bottom: 10px;'>🤖 Gợi ý từ AI</div>\n        <p style='white-space: pre-wrap; margin: 0;'>{{$json.ai_advice}}</p>\n      </div>\n      \n      <div style='text-align: center; margin-top: 25px;'>\n        <a href='http://localhost:5173/dashboard' style='display: inline-block; background: #10b981; color: white; padding: 14px 35px; text-decoration: none; border-radius: 25px; font-weight: bold;'>\n          Xem Dashboard của bạn →\n        </a>\n      </div>\n      \n      <p style='text-align: center; margin-top: 20px; color: #666;'>\n        💪 Chúc bạn một tuần mới hiệu quả!\n      </p>\n    </div>\n    <div class='footer'>\n      <p>Email tự động từ <strong>AI Deadline Forecasting Agent</strong></p>\n      <p><em>Công cụ quản lý deadline CÁ NHÂN của bạn</em></p>\n    </div>\n  </div>\n</body>\n</html>",
@@ -148,7 +180,10 @@
       "name": "Send Email: Weekly Review",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2,
-      "position": [2440, 300],
+      "position": [
+        2440,
+        300
+      ],
       "credentials": {
         "smtp": {
           "id": "1",
@@ -187,7 +222,10 @@
       "name": "HTTP: Log to Backend",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 3,
-      "position": [2660, 300]
+      "position": [
+        2660,
+        300
+      ]
     }
   ],
   "connections": {
