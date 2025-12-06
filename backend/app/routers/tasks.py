@@ -327,7 +327,7 @@ async def update_task(
     # Check authorization - chỉ project owner mới sửa được
     project = db.query(Project).filter(Project.id == task.project_id).first()
     if current_user.role != "admin":
-            if not project or project.owner_id != current_user.id:
+        if not project or project.owner_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Không có quyền chỉnh sửa task này"
