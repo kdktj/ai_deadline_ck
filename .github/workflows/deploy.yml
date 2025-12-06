@@ -318,44 +318,52 @@ jobs:
 
       - name: 📢 Notify n8n - Deploy Success
         if: needs.deploy.result == 'success' && steps.n8n-health.outputs.n8n_ready == 'true'
+        continue-on-error: true
+        env:
+          N8N_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          ACTOR: ${{ github.actor }}
+          BRANCH: ${{ github.ref_name }}
         run: |
           echo "📤 Sending success notification to n8n..."
-          response=$(curl -s -w "\n%{http_code}" -X POST ${{ secrets.N8N_WEBHOOK_URL }}/webhook/deploy-success \
+          # Escape commit message for JSON (remove newlines, escape quotes)
+          SAFE_MSG=$(echo "$COMMIT_MSG" | head -1 | sed 's/"/\\"/g' | cut -c1-100)
+          DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          
+          curl -s -X POST "${N8N_URL}/webhook/deploy-success" \
             -H "Content-Type: application/json" \
-            -d '{
-              "service": "full-stack",
-              "status": "success",
-              "commit_sha": "${{ github.sha }}",
-              "commit_message": "${{ github.event.head_commit.message }}",
-              "deployed_at": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
-              "deployed_by": "${{ github.actor }}",
-              "branch": "${{ github.ref_name }}"
-            }')
-          http_code=$(echo "$response" | tail -1)
-          body=$(echo "$response" | head -n -1)
-          echo "Response: $body"
-          echo "HTTP Code: $http_code"
-          if [ "$http_code" -eq 200 ]; then
-            echo "✅ n8n webhook notification sent successfully!"
-          else
-            echo "⚠️ n8n webhook returned HTTP $http_code"
-          fi
+            -d "{
+              \"service\": \"full-stack\",
+              \"status\": \"success\",
+              \"commit_sha\": \"${COMMIT_SHA}\",
+              \"commit_message\": \"${SAFE_MSG}\",
+              \"deployed_at\": \"${DEPLOYED_AT}\",
+              \"deployed_by\": \"${ACTOR}\",
+              \"branch\": \"${BRANCH}\"
+            }" && echo "" && echo "✅ n8n webhook notification sent successfully!" || echo "⚠️ Failed to send webhook"
 
       - name: ❌ Notify n8n - Deploy Failed
         if: needs.deploy.result == 'failure' && steps.n8n-health.outputs.n8n_ready == 'true'
+        continue-on-error: true
+        env:
+          N8N_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+          COMMIT_SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
         run: |
           echo "📤 Sending failure notification to n8n..."
-          curl -s -X POST ${{ secrets.N8N_WEBHOOK_URL }}/webhook/deploy-failed \
+          FAILED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          
+          curl -s -X POST "${N8N_URL}/webhook/deploy-failed" \
             -H "Content-Type: application/json" \
-            -d '{
-              "service": "full-stack",
-              "status": "failed",
-              "commit_sha": "${{ github.sha }}",
-              "error": "Deployment failed - check GitHub Actions logs",
-              "failed_at": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
-              "branch": "${{ github.ref_name }}"
-            }'
-          echo "✅ Failure notification sent to n8n"
+            -d "{
+              \"service\": \"full-stack\",
+              \"status\": \"failed\",
+              \"commit_sha\": \"${COMMIT_SHA}\",
+              \"error\": \"Deployment failed - check GitHub Actions logs\",
+              \"failed_at\": \"${FAILED_AT}\",
+              \"branch\": \"${BRANCH}\"
+            }" && echo "" && echo "✅ Failure notification sent to n8n" || echo "⚠️ Failed to send webhook"
 
       - name: 📊 Deployment Summary
         run: |
