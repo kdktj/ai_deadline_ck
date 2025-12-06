@@ -1,4 +1,4 @@
-# Hệ Thống Dự Báo Deadline AI test
+# Hệ Thống Dự Báo Deadline AI
 
 ## 1. Tổng Quan Dự Án
 
@@ -362,3 +362,355 @@ Logic: Tính completion rate = (tasks done / total tasks) × 100%, sắp xếp t
 ---
 
 Tất cả các workflow n8n đều ghi log hoạt động vào bảng automation_logs thông qua Backend API để admin có thể theo dõi và debug. Các email đều được format bằng HTML với styling đẹp và responsive. N8n sử dụng environment variables (BACKEND_API_URL, EMAIL_FROM, SMTP credentials) để kết nối với Backend và email service.
+
+## 5. Deploy, CI/CD và Vận Hành Hệ Thống
+
+### 5.1. Tổng Quan Kiến Trúc Deploy
+
+Hệ thống được deploy trên Google Cloud VM (Compute Engine) sử dụng Docker containers. Kiến trúc triển khai bao gồm:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      GOOGLE CLOUD VM                             │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────────────────────────┐ │
+│  │                    NGINX (Reverse Proxy)                     │ │
+│  │         Port 80 (HTTP → HTTPS redirect)                      │ │
+│  │         Port 443 (HTTPS + SSL/TLS)                           │ │
+│  └───────────────────────┬─────────────────────────────────────┘ │
+│                          │                                       │
+│    ┌─────────────────────┼─────────────────────────────────────┐ │
+│    │                     │                             │       │ │
+│    ▼                     ▼                             ▼       │ │
+│ ┌──────────┐      ┌──────────┐                  ┌──────────┐   │ │
+│ │ Frontend │      │ Backend  │                  │   n8n    │   │ │
+│ │ (React)  │      │ (FastAPI)│                  │(Workflow)│   │ │
+│ │ :80      │      │ :8000    │                  │ :5678    │   │ │
+│ └──────────┘      └────┬─────┘                  └────┬─────┘   │ │
+│                        │                              │        │ │
+│                        └──────────────┬───────────────┘        │ │
+│                                       │                        │ │
+│                              ┌────────▼────────┐               │ │
+│                              │   PostgreSQL    │               │ │
+│                              │     :5432       │               │ │
+│                              └─────────────────┘               │ │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Các subdomain được sử dụng:**
+
+| Domain | Service | Mô tả |
+|--------|---------|-------|
+| `ai-deadline.io.vn` | Frontend | Giao diện người dùng (React SPA) |
+| `api.ai-deadline.io.vn` | Backend | REST API server (FastAPI) |
+| `n8n.ai-deadline.io.vn` | n8n | Workflow automation platform |
+
+### 5.2. Deploy Hoạt Động Như Thế Nào
+
+Quá trình deploy sử dụng Docker Compose với file `docker-compose.prod.yml` để orchestrate tất cả các services. Dưới đây là chi tiết cách hệ thống được khởi động:
+
+**Bước 1: Chuẩn bị môi trường**
+- File `.env` chứa các biến môi trường cần thiết (database credentials, API keys, SMTP config)
+- SSL certificates được quản lý bởi Let's Encrypt thông qua Certbot container
+
+**Bước 2: Khởi động containers theo thứ tự**
+1. **PostgreSQL**: Database được khởi động đầu tiên với health check
+2. **Backend (FastAPI)**: Đợi database ready → chạy Alembic migrations → khởi động Uvicorn server
+3. **Frontend (React)**: Build static files với Vite → serve qua Nginx container nội bộ
+4. **n8n**: Kết nối đến PostgreSQL và Backend API
+5. **NGINX Reverse Proxy**: Route traffic đến các services dựa trên subdomain
+6. **Certbot**: Tự động renew SSL certificates mỗi 12 giờ
+
+**Bước 3: Deploy script (`deploy.sh`)**
+
+Script `deploy.sh` tự động hóa toàn bộ quy trình:
+
+```bash
+./deploy.sh [OPTIONS]
+
+Options:
+  --build     Rebuild Docker images
+  --migrate   Chạy database migrations
+  --seed      Seed dữ liệu mẫu vào database
+```
+
+Quy trình deploy script thực hiện:
+1. Kiểm tra file `.env` tồn tại
+2. Kiểm tra Docker daemon đang chạy
+3. Pull code mới nhất từ Git (nếu có)
+4. Build Docker images (nếu có flag `--build`)
+5. Dừng containers cũ
+6. Khởi động services mới với `docker compose up -d`
+7. Đợi database sẵn sàng (health check)
+8. Chạy migrations (nếu có flag `--migrate`)
+9. Seed dữ liệu (nếu có flag `--seed`)
+10. Thực hiện health checks cho Backend, Frontend, n8n
+11. Hiển thị trạng thái containers
+
+**Bước 4: SSL/TLS với Let's Encrypt**
+
+- SSL certificates được tự động lấy và renew bởi Certbot
+- Script `init-ssl.sh` khởi tạo certificates lần đầu
+- NGINX tự động reload mỗi 6 giờ để áp dụng certificates mới
+- HTTP traffic (port 80) tự động redirect sang HTTPS (port 443)
+
+### 5.3. CI/CD Hoạt Động Như Thế Nào
+
+Hệ thống sử dụng GitHub Actions để tự động hóa quá trình test, build và deploy. Có 2 workflow chính:
+
+#### Workflow 1: `deploy.yml` - Main CI/CD Pipeline
+
+**Triggers:**
+- Tự động chạy khi push code lên branch `main`
+- Có thể chạy manual qua GitHub Actions UI (workflow_dispatch)
+
+**Pipeline Flow:**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           GITHUB ACTIONS CI/CD                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐              │
+│  │  Push    │───▶│  Test &  │───▶│  Build   │───▶│  Deploy  │              │
+│  │  main    │    │   Lint   │    │  Images  │    │   VM     │              │
+│  └──────────┘    └──────────┘    └──────────┘    └──────────┘              │
+│                                                        │                    │
+│                                                        ▼                    │
+│                                                  ┌──────────┐               │
+│                                                  │  Health  │               │
+│                                                  │  Check   │               │
+│                                                  └──────────┘               │
+│                                                        │                    │
+│                                                        ▼                    │
+│                                                  ┌──────────┐               │
+│                                                  │  Notify  │               │
+│                                                  │   n8n    │               │
+│                                                  └──────────┘               │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Chi tiết các Jobs:**
+
+1. **test-backend** (Job 1):
+   - Setup Python 3.11
+   - Install dependencies từ `requirements.txt`
+   - Lint code với flake8 (kiểm tra syntax errors, undefined names)
+   - Chạy pytest (nếu có test files)
+
+2. **test-frontend** (Job 2):
+   - Setup Node.js 20
+   - Install dependencies với `npm ci`
+   - Lint code với ESLint
+   - Build production bundle với Vite
+
+3. **build-images** (Job 3):
+   - Chỉ chạy khi push lên `main` và tests pass
+   - Build Docker images cho Backend và Frontend
+   - Push images lên GitHub Container Registry (ghcr.io)
+   - Sử dụng Docker layer caching để tăng tốc build
+
+4. **deploy** (Job 4):
+   - Validate các GitHub Secrets đã được cấu hình
+   - Setup SSH key để kết nối đến server
+   - SSH vào VM và thực hiện:
+     - `git pull origin main` để lấy code mới
+     - `docker compose build --no-cache` để rebuild images
+     - `docker compose up -d --force-recreate` để restart services
+     - Health check Backend API qua docker exec
+     - Cleanup old Docker images
+
+5. **post-deploy-checks** (Job 5):
+   - Health check Frontend (https://ai-deadline.io.vn)
+   - Health check Backend API (https://api.ai-deadline.io.vn/health)
+   - Health check n8n (https://n8n.ai-deadline.io.vn)
+   - Gửi webhook notification đến n8n về kết quả deploy
+   - Tạo deployment summary trên GitHub Actions
+
+#### Workflow 2: `pr-checks.yml` - Pull Request Checks
+
+**Triggers:**
+- Chạy khi có Pull Request vào các branch: `main`, `develop_1`, `develop_2`
+
+**Jobs:**
+1. **backend-checks**: Format (Black), imports (isort), lint (flake8), syntax check
+2. **frontend-checks**: ESLint, build check
+3. **docker-build-check**: Verify Docker build thành công
+4. **pr-summary**: Tổng hợp kết quả checks
+
+#### GitHub Secrets cần thiết
+
+Để CI/CD hoạt động, cần cấu hình các secrets trong GitHub repository:
+
+| Secret | Mô tả |
+|--------|-------|
+| `SSH_PRIVATE_KEY` | Private SSH key để connect vào server |
+| `SERVER_IP` | IP address của VM (ví dụ: 34.126.xxx.xxx) |
+| `SERVER_USER` | Username SSH vào server |
+| `N8N_WEBHOOK_URL` | URL base của n8n (https://n8n.ai-deadline.io.vn) |
+
+### 5.4. Luồng Thông Báo Deploy (n8n Flow 4)
+
+Khi CI/CD pipeline hoàn thành (thành công hoặc thất bại), GitHub Actions sẽ gọi webhook đến n8n:
+
+**Deploy thành công:**
+1. GitHub Actions gọi `POST /webhook/deploy-success` với thông tin commit
+2. n8n nhận webhook và log vào automation_logs
+3. n8n gửi email thông báo đến admin với template đẹp (header màu xanh ✅)
+4. Admin có thể xem lịch sử deploy trong trang Automation Logs
+
+**Deploy thất bại:**
+1. GitHub Actions gọi `POST /webhook/deploy-failed` với thông tin lỗi
+2. n8n log lỗi vào automation_logs
+3. n8n gửi email cảnh báo đến admin (header màu đỏ ❌)
+4. Admin nhận thông báo để kịp thời xử lý
+
+### 5.5. Các Script Tiện Ích
+
+| Script | Mục đích |
+|--------|----------|
+| `start.sh` | Khởi động toàn bộ hệ thống (cho development) |
+| `stop.sh` | Dừng tất cả containers |
+| `deploy.sh` | Deploy production với options (--build, --migrate, --seed) |
+| `init-ssl.sh` | Khởi tạo SSL certificates lần đầu |
+| `setup-github-secrets.sh` | Hướng dẫn cấu hình GitHub Secrets |
+
+### 5.6. Quản Lý Containers
+
+**Xem trạng thái:**
+```bash
+docker compose -f docker-compose.prod.yml ps
+```
+
+**Xem logs realtime:**
+```bash
+docker compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml logs -f backend  # Logs của service cụ thể
+```
+
+**Restart services:**
+```bash
+docker compose -f docker-compose.prod.yml restart
+docker compose -f docker-compose.prod.yml restart backend  # Restart service cụ thể
+```
+
+**Stop và cleanup:**
+```bash
+docker compose -f docker-compose.prod.yml down
+docker system prune -a  # Xóa unused resources
+```
+
+### 5.7. Backup và Restore Database
+
+**Backup:**
+```bash
+docker exec ai_deadline_db pg_dump -U ai_user ai_deadline > backup_$(date +%Y%m%d_%H%M%S).sql
+```
+
+**Restore:**
+```bash
+docker exec -i ai_deadline_db psql -U ai_user ai_deadline < backup_file.sql
+```
+
+### 5.8. SSL Certificate Renewal
+
+SSL certificates từ Let's Encrypt tự động renew bởi Certbot container:
+- Certbot kiểm tra và renew mỗi 12 giờ
+- NGINX reload mỗi 6 giờ để áp dụng certificates mới
+
+**Manual renew (nếu cần):**
+```bash
+docker compose -f docker-compose.prod.yml run --rm certbot renew
+docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+```
+
+### 5.9. Monitoring và Health Checks
+
+**Health check endpoints:**
+- Backend: `https://api.ai-deadline.io.vn/health`
+- Frontend: `https://ai-deadline.io.vn`
+- n8n: `https://n8n.ai-deadline.io.vn`
+
+**Monitor resources:**
+```bash
+htop                    # CPU, Memory usage
+docker stats            # Docker container resources
+df -h                   # Disk space
+docker ps               # Running containers
+```
+
+### 5.10. Troubleshooting Thường Gặp
+
+| Vấn đề | Nguyên nhân | Giải pháp |
+|--------|-------------|-----------|
+| Container không start | .env chưa cấu hình | Kiểm tra file `.env`, copy từ `.env.production.example` |
+| Database connection failed | PostgreSQL chưa ready | Đợi health check pass, kiểm tra logs `docker logs ai_deadline_db` |
+| 502 Bad Gateway | Backend chưa ready | Đợi migrations hoàn thành, kiểm tra `docker logs ai_deadline_backend` |
+| SSL Certificate lỗi | Certbot failed | Chạy lại `./init-ssl.sh`, kiểm tra DNS đã trỏ đúng IP |
+| CI/CD failed | Missing secrets | Kiểm tra GitHub Secrets đã cấu hình đầy đủ |
+| SSH connection refused | Firewall hoặc key sai | Kiểm tra VM đang chạy, firewall allow port 22, SSH key đúng |
+
+### 5.11. Quy Trình Rollback
+
+Nếu deploy có lỗi, rollback về version trước:
+
+```bash
+# SSH vào server
+ssh user@server_ip
+
+# Xem lịch sử commits
+cd /opt/ai-deadline
+git log --oneline -5
+
+# Checkout về commit trước
+git checkout <previous_commit_sha>
+
+# Rebuild và restart
+docker compose -f docker-compose.prod.yml up -d --build --force-recreate
+```
+
+### 5.12. Tóm Tắt Quy Trình Deploy End-to-End
+
+```
+Developer push code lên main
+           │
+           ▼
+GitHub Actions trigger workflow
+           │
+           ▼
+┌──────────────────────────┐
+│  Test Backend & Frontend │
+│  - Lint code             │
+│  - Run tests             │
+│  - Build check           │
+└──────────────────────────┘
+           │
+           ▼ (nếu pass)
+┌──────────────────────────┐
+│  Build Docker Images     │
+│  - Build backend image   │
+│  - Build frontend image  │
+│  - Push to GHCR          │
+└──────────────────────────┘
+           │
+           ▼
+┌──────────────────────────┐
+│  Deploy to VM            │
+│  - SSH vào server        │
+│  - Git pull code mới     │
+│  - Docker compose build  │
+│  - Docker compose up     │
+│  - Health check          │
+└──────────────────────────┘
+           │
+           ▼
+┌──────────────────────────┐
+│  Post-Deploy Checks      │
+│  - Health check services │
+│  - Notify n8n webhook    │
+│  - Gửi email admin       │
+└──────────────────────────┘
+           │
+           ▼
+   ✅ Deploy thành công!
+```
