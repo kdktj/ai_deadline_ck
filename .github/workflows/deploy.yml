@@ -266,43 +266,17 @@ jobs:
             echo "✅ Deployment completed successfully!"
           ENDSSH
 
-      - name: 📢 Notify n8n Webhook
-        if: success()
-        run: |
-          curl -X POST ${{ secrets.N8N_WEBHOOK_URL }}/webhook/deploy-success \
-            -H "Content-Type: application/json" \
-            -d '{
-              "service": "full-stack",
-              "status": "success",
-              "commit_sha": "${{ github.sha }}",
-              "commit_message": "${{ github.event.head_commit.message }}",
-              "deployed_at": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
-              "deployed_by": "${{ github.actor }}"
-            }'
-        continue-on-error: true
-
-      - name: ❌ Notify on Failure
-        if: failure()
-        run: |
-          curl -X POST ${{ secrets.N8N_WEBHOOK_URL }}/webhook/deploy-failed \
-            -H "Content-Type: application/json" \
-            -d '{
-              "service": "full-stack",
-              "status": "failed",
-              "commit_sha": "${{ github.sha }}",
-              "error": "Deployment failed - check GitHub Actions logs",
-              "failed_at": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
-            }'
-        continue-on-error: true
-
   # ===========================================================================
-  # JOB 5: POST-DEPLOYMENT CHECKS
+  # JOB 5: POST-DEPLOYMENT CHECKS & NOTIFICATIONS
+  # ===========================================================================
+  # Webhook được gọi ở đây SAU KHI n8n đã healthy, không phải trong job deploy
+  # vì khi docker compose restart, n8n chưa sẵn sàng nhận webhook
   # ===========================================================================
   post-deploy-checks:
     name: ✅ Post-Deploy Checks
     runs-on: ubuntu-latest
     needs: [deploy]
-    if: success()
+    if: always()
 
     steps:
       - name: 🏥 Health Check - Frontend
@@ -326,15 +300,62 @@ jobs:
           fi
 
       - name: 🏥 Health Check - n8n
+        id: n8n-health
         run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" https://n8n.ai-deadline.io.vn)
-          if [ $response -eq 200 ] || [ $response -eq 302 ]; then
-            echo "✅ n8n is healthy (HTTP $response)"
+          echo "⏳ Waiting for n8n to be ready..."
+          for i in 1 2 3 4 5 6; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" https://n8n.ai-deadline.io.vn)
+            if [ $response -eq 200 ] || [ $response -eq 302 ]; then
+              echo "✅ n8n is healthy (HTTP $response)"
+              echo "n8n_ready=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "Attempt $i: n8n not ready (HTTP $response), waiting 10s..."
+            sleep 10
+          done
+          echo "⚠️ n8n health check failed after 6 attempts"
+          echo "n8n_ready=false" >> $GITHUB_OUTPUT
+
+      - name: 📢 Notify n8n - Deploy Success
+        if: needs.deploy.result == 'success' && steps.n8n-health.outputs.n8n_ready == 'true'
+        run: |
+          echo "📤 Sending success notification to n8n..."
+          response=$(curl -s -w "\n%{http_code}" -X POST ${{ secrets.N8N_WEBHOOK_URL }}/webhook/deploy-success \
+            -H "Content-Type: application/json" \
+            -d '{
+              "service": "full-stack",
+              "status": "success",
+              "commit_sha": "${{ github.sha }}",
+              "commit_message": "${{ github.event.head_commit.message }}",
+              "deployed_at": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
+              "deployed_by": "${{ github.actor }}",
+              "branch": "${{ github.ref_name }}"
+            }')
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -n -1)
+          echo "Response: $body"
+          echo "HTTP Code: $http_code"
+          if [ "$http_code" -eq 200 ]; then
+            echo "✅ n8n webhook notification sent successfully!"
           else
-            echo "❌ n8n check failed (HTTP $response)"
-            exit 1
+            echo "⚠️ n8n webhook returned HTTP $http_code"
           fi
-        continue-on-error: true
+
+      - name: ❌ Notify n8n - Deploy Failed
+        if: needs.deploy.result == 'failure' && steps.n8n-health.outputs.n8n_ready == 'true'
+        run: |
+          echo "📤 Sending failure notification to n8n..."
+          curl -s -X POST ${{ secrets.N8N_WEBHOOK_URL }}/webhook/deploy-failed \
+            -H "Content-Type: application/json" \
+            -d '{
+              "service": "full-stack",
+              "status": "failed",
+              "commit_sha": "${{ github.sha }}",
+              "error": "Deployment failed - check GitHub Actions logs",
+              "failed_at": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
+              "branch": "${{ github.ref_name }}"
+            }'
+          echo "✅ Failure notification sent to n8n"
 
       - name: 📊 Deployment Summary
         run: |
