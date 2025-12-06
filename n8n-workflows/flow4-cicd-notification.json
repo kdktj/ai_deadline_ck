@@ -1,65 +1,175 @@
 {
-  "name": "Flow 6 - CI/CD Deployment Notification",
+  "name": "Flow 4 - CI/CD Deployment Notification",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "n8n/deploy-success",
-        "responseMode": "lastNode",
+        "path": "deploy-success",
+        "responseMode": "responseNode",
         "options": {}
       },
-      "name": "Webhook Trigger",
+      "id": "webhook-deploy-success",
+      "name": "Webhook: Deploy Success",
       "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [240, 300],
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
       "webhookId": "deploy-success-webhook"
     },
     {
       "parameters": {
-        "url": "={{$env.BACKEND_API_URL}}/api/webhooks/n8n/automation-log",
-        "authentication": "none",
-        "method": "POST",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "workflow_name",
-              "value": "CI/CD Deployment"
-            },
-            {
-              "name": "status",
-              "value": "={{$json.body.status === 'success' ? 'success' : 'failed'}}"
-            },
-            {
-              "name": "input_data",
-              "value": "={{JSON.stringify({service: $json.body.service, commit_sha: $json.body.commit_sha})}}"
-            },
-            {
-              "name": "output_data",
-              "value": "={{JSON.stringify({deployed_at: $json.body.deployed_at})}}"
-            }
-          ]
-        },
+        "httpMethod": "POST",
+        "path": "deploy-failed",
+        "responseMode": "responseNode",
         "options": {}
       },
-      "name": "HTTP: Log Deployment",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [460, 300]
+      "id": "webhook-deploy-failed",
+      "name": "Webhook: Deploy Failed",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        500
+      ],
+      "webhookId": "deploy-failed-webhook"
     },
     {
       "parameters": {
-        "fromEmail": "={{$env.EMAIL_FROM}}",
-        "toEmail": "={{$env.ADMIN_EMAIL}}",
-        "subject": "={{$json.body.status === 'success' ? '✅ Deploy thành công' : '❌ Deploy thất bại'}}: {{$node['Webhook Trigger'].json.body.service}}",
+        "jsCode": "// Extract deployment data from webhook\nconst webhookData = $input.first().json;\n\n// Get data from webhook body\nconst service = webhookData.service || 'unknown';\nconst status = webhookData.status || 'success';\nconst commitSha = webhookData.commit_sha || '';\nconst commitMessage = webhookData.commit_message || '';\nconst deployedAt = webhookData.deployed_at || new Date().toISOString();\nconst deployedBy = webhookData.deployed_by || 'GitHub Actions';\nconst branch = webhookData.branch || 'main';\n\nreturn {\n  json: {\n    service,\n    status,\n    commit_sha: commitSha,\n    commit_message: commitMessage,\n    deployed_at: deployedAt,\n    deployed_by: deployedBy,\n    branch,\n    is_success: status === 'success'\n  }\n};"
+      },
+      "id": "code-extract-success",
+      "name": "Extract Success Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract deployment failure data from webhook\nconst webhookData = $input.first().json;\n\n// Get data from webhook body\nconst service = webhookData.service || 'unknown';\nconst status = webhookData.status || 'failed';\nconst commitSha = webhookData.commit_sha || '';\nconst error = webhookData.error || 'Unknown error';\nconst failedAt = webhookData.failed_at || new Date().toISOString();\nconst branch = webhookData.branch || 'main';\n\nreturn {\n  json: {\n    service,\n    status,\n    commit_sha: commitSha,\n    error,\n    failed_at: failedAt,\n    branch,\n    is_success: false\n  }\n};"
+      },
+      "id": "code-extract-failed",
+      "name": "Extract Failed Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL || 'http://backend:8000' }}/api/webhooks/n8n/automation-log",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflow_name\": \"CI/CD Deployment\",\n  \"status\": \"{{ $json.status }}\",\n  \"input_data\": {{ JSON.stringify({ service: $json.service, commit_sha: $json.commit_sha, branch: $json.branch }) }},\n  \"output_data\": {{ JSON.stringify({ deployed_at: $json.deployed_at, deployed_by: $json.deployed_by }) }}\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "http-log-success",
+      "name": "Log Success to Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        300
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL || 'http://backend:8000' }}/api/webhooks/n8n/automation-log",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflow_name\": \"CI/CD Deployment\",\n  \"status\": \"failed\",\n  \"input_data\": {{ JSON.stringify({ service: $json.service, commit_sha: $json.commit_sha, branch: $json.branch }) }},\n  \"output_data\": {{ JSON.stringify({ failed_at: $json.failed_at, error: $json.error }) }},\n  \"error_message\": \"{{ $json.error }}\"\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "http-log-failed",
+      "name": "Log Failed to Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        500
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get previous node data\nconst data = $('Extract Success Data').first().json;\n\nconst commitShort = data.commit_sha ? data.commit_sha.substring(0, 7) : 'N/A';\nconst commitMessage = data.commit_message ? data.commit_message.split('\\n')[0].substring(0, 100) : 'No message';\n\nconst emailHtml = `\n<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <style>\n    body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }\n    .container { max-width: 600px; margin: 20px auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }\n    .header { background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); color: white; padding: 40px 30px; text-align: center; }\n    .header h1 { margin: 0 0 10px 0; font-size: 28px; }\n    .header .emoji { font-size: 48px; margin-bottom: 15px; }\n    .content { padding: 30px; }\n    .info-grid { display: grid; gap: 15px; }\n    .info-box { background: #f8f9fa; padding: 15px 20px; border-radius: 8px; border-left: 4px solid #48bb78; }\n    .info-label { font-weight: 600; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }\n    .info-value { color: #333; font-size: 16px; word-break: break-all; }\n    .info-value code { background: #e9ecef; padding: 2px 8px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 14px; }\n    .success-banner { background: #c6f6d5; border: 1px solid #9ae6b4; padding: 20px; border-radius: 8px; margin-top: 20px; text-align: center; }\n    .success-banner p { margin: 0; color: #276749; font-weight: 500; }\n    .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; background: #f8f9fa; }\n    .links { margin-top: 25px; text-align: center; }\n    .links a { display: inline-block; padding: 12px 24px; background: #48bb78; color: white; text-decoration: none; border-radius: 6px; font-weight: 500; margin: 0 5px; }\n    .links a:hover { background: #38a169; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <div class=\"emoji\">✅</div>\n      <h1>Deploy Thành Công!</h1>\n      <p style=\"margin: 0; opacity: 0.9;\">${data.service}</p>\n    </div>\n    <div class=\"content\">\n      <div class=\"info-grid\">\n        <div class=\"info-box\">\n          <div class=\"info-label\">Service</div>\n          <div class=\"info-value\">${data.service}</div>\n        </div>\n        <div class=\"info-box\">\n          <div class=\"info-label\">Branch</div>\n          <div class=\"info-value\">${data.branch}</div>\n        </div>\n        <div class=\"info-box\">\n          <div class=\"info-label\">Commit</div>\n          <div class=\"info-value\"><code>${commitShort}</code></div>\n        </div>\n        <div class=\"info-box\">\n          <div class=\"info-label\">Commit Message</div>\n          <div class=\"info-value\">${commitMessage}</div>\n        </div>\n        <div class=\"info-box\">\n          <div class=\"info-label\">Deployed By</div>\n          <div class=\"info-value\">${data.deployed_by}</div>\n        </div>\n        <div class=\"info-box\">\n          <div class=\"info-label\">Deployed At</div>\n          <div class=\"info-value\">${data.deployed_at}</div>\n        </div>\n      </div>\n      \n      <div class=\"success-banner\">\n        <p>🎉 Hệ thống đã được cập nhật lên phiên bản mới thành công!</p>\n      </div>\n      \n      <div class=\"links\">\n        <a href=\"https://ai-deadline.io.vn\">🌐 Xem Website</a>\n        <a href=\"https://github.com/kdktj/ai_deadline_ck/actions\">📋 GitHub Actions</a>\n      </div>\n    </div>\n    <div class=\"footer\">\n      <p>© 2024 AI Deadline Forecasting Agent</p>\n      <p>Thông báo tự động từ GitHub Actions + n8n</p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\nreturn {\n  json: {\n    ...data,\n    emailHtml,\n    emailSubject: `✅ Deploy thành công: ${data.service} (${commitShort})`\n  }\n};"
+      },
+      "id": "code-prepare-success-email",
+      "name": "Prepare Success Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get previous node data\nconst data = $('Extract Failed Data').first().json;\n\nconst commitShort = data.commit_sha ? data.commit_sha.substring(0, 7) : 'N/A';\n\nconst emailHtml = `\n<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <style>\n    body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }\n    .container { max-width: 600px; margin: 20px auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }\n    .header { background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%); color: white; padding: 40px 30px; text-align: center; }\n    .header h1 { margin: 0 0 10px 0; font-size: 28px; }\n    .header .emoji { font-size: 48px; margin-bottom: 15px; }\n    .content { padding: 30px; }\n    .info-grid { display: grid; gap: 15px; }\n    .info-box { background: #f8f9fa; padding: 15px 20px; border-radius: 8px; border-left: 4px solid #f56565; }\n    .info-label { font-weight: 600; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }\n    .info-value { color: #333; font-size: 16px; word-break: break-all; }\n    .info-value code { background: #e9ecef; padding: 2px 8px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 14px; }\n    .error-banner { background: #fed7d7; border: 1px solid #feb2b2; padding: 20px; border-radius: 8px; margin-top: 20px; }\n    .error-banner p { margin: 0; color: #c53030; }\n    .error-message { background: #fff5f5; padding: 15px; border-radius: 6px; margin-top: 10px; font-family: 'Courier New', monospace; font-size: 13px; color: #c53030; white-space: pre-wrap; }\n    .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; background: #f8f9fa; }\n    .links { margin-top: 25px; text-align: center; }\n    .links a { display: inline-block; padding: 12px 24px; background: #f56565; color: white; text-decoration: none; border-radius: 6px; font-weight: 500; margin: 0 5px; }\n    .links a:hover { background: #e53e3e; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <div class=\"emoji\">❌</div>\n      <h1>Deploy Thất Bại!</h1>\n      <p style=\"margin: 0; opacity: 0.9;\">${data.service}</p>\n    </div>\n    <div class=\"content\">\n      <div class=\"info-grid\">\n        <div class=\"info-box\">\n          <div class=\"info-label\">Service</div>\n          <div class=\"info-value\">${data.service}</div>\n        </div>\n        <div class=\"info-box\">\n          <div class=\"info-label\">Branch</div>\n          <div class=\"info-value\">${data.branch}</div>\n        </div>\n        <div class=\"info-box\">\n          <div class=\"info-label\">Commit</div>\n          <div class=\"info-value\"><code>${commitShort}</code></div>\n        </div>\n        <div class=\"info-box\">\n          <div class=\"info-label\">Failed At</div>\n          <div class=\"info-value\">${data.failed_at}</div>\n        </div>\n      </div>\n      \n      <div class=\"error-banner\">\n        <p><strong>⚠️ Lỗi xảy ra trong quá trình deployment:</strong></p>\n        <div class=\"error-message\">${data.error}</div>\n      </div>\n      \n      <div class=\"links\">\n        <a href=\"https://github.com/kdktj/ai_deadline_ck/actions\">📋 Xem Logs</a>\n      </div>\n    </div>\n    <div class=\"footer\">\n      <p>© 2024 AI Deadline Forecasting Agent</p>\n      <p>Thông báo tự động từ GitHub Actions + n8n</p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\nreturn {\n  json: {\n    ...data,\n    emailHtml,\n    emailSubject: `❌ Deploy thất bại: ${data.service} (${commitShort})`\n  }\n};"
+      },
+      "id": "code-prepare-failed-email",
+      "name": "Prepare Failed Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.EMAIL_FROM || 'noreply@ai-deadline.io.vn' }}",
+        "toEmail": "={{ $env.ADMIN_EMAIL || 'admin@ai-deadline.io.vn' }}",
+        "subject": "={{ $json.emailSubject }}",
         "emailType": "html",
-        "message": "=<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .container { max-width: 600px; margin: 0 auto; padding: 20px; }\n    .header { \n      background: {{$node['Webhook Trigger'].json.body.status === 'success' ? 'linear-gradient(135deg, #48bb78 0%, #38a169 100%)' : 'linear-gradient(135deg, #f56565 0%, #e53e3e 100%)'}}; \n      color: white; \n      padding: 30px; \n      text-align: center; \n      border-radius: 10px 10px 0 0; \n    }\n    .content { background: #f9f9f9; padding: 30px; }\n    .info-box { background: white; padding: 15px; border-radius: 8px; margin: 10px 0; }\n    .info-label { font-weight: bold; color: #666; display: inline-block; width: 150px; }\n    .info-value { color: #333; }\n    .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; border-radius: 0 0 10px 10px; background: #f9f9f9; }\n  </style>\n</head>\n<body>\n  <div class='container'>\n    <div class='header'>\n      <h1>{{$node['Webhook Trigger'].json.body.status === 'success' ? '✅' : '❌'}} Thông báo Deployment</h1>\n      <p>{{$node['Webhook Trigger'].json.body.service}}</p>\n    </div>\n    <div class='content'>\n      <h2>Chi tiết Deployment</h2>\n      \n      <div class='info-box'>\n        <span class='info-label'>Service:</span>\n        <span class='info-value'>{{$node['Webhook Trigger'].json.body.service}}</span>\n      </div>\n      \n      <div class='info-box'>\n        <span class='info-label'>Status:</span>\n        <span class='info-value' style='color: {{$node['Webhook Trigger'].json.body.status === 'success' ? '#48bb78' : '#f56565'}};'>\n          <strong>{{$node['Webhook Trigger'].json.body.status}}</strong>\n        </span>\n      </div>\n      \n      <div class='info-box'>\n        <span class='info-label'>Commit SHA:</span>\n        <span class='info-value'><code>{{$node['Webhook Trigger'].json.body.commit_sha}}</code></span>\n      </div>\n      \n      <div class='info-box'>\n        <span class='info-label'>Deployed At:</span>\n        <span class='info-value'>{{$node['Webhook Trigger'].json.body.deployed_at}}</span>\n      </div>\n      \n      {{#if $node['Webhook Trigger'].json.body.branch}}\n      <div class='info-box'>\n        <span class='info-label'>Branch:</span>\n        <span class='info-value'>{{$node['Webhook Trigger'].json.body.branch}}</span>\n      </div>\n      {{/if}}\n      \n      <p style='margin-top: 20px; padding: 15px; background: {{$node['Webhook Trigger'].json.body.status === 'success' ? '#c6f6d5' : '#fed7d7'}}; border-radius: 5px;'>\n        {{$node['Webhook Trigger'].json.body.status === 'success' ? '🎉 Deployment hoàn tất thành công! Hệ thống đã được cập nhật lên phiên bản mới.' : '⚠️ Deployment thất bại. Vui lòng kiểm tra logs để biết thêm chi tiết.'}}\n      </p>\n    </div>\n    <div class='footer'>\n      <p>© 2024 AI Deadline Forecasting Agent</p>\n      <p>Thông báo tự động từ GitHub Actions + n8n</p>\n    </div>\n  </div>\n</body>\n</html>",
+        "html": "={{ $json.emailHtml }}",
         "options": {}
       },
-      "name": "Send Email: Deployment Alert",
+      "id": "email-success",
+      "name": "Send Success Email",
       "type": "n8n-nodes-base.emailSend",
-      "typeVersion": 2,
-      "position": [680, 300],
+      "typeVersion": 2.1,
+      "position": [
+        1120,
+        300
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "1",
+          "name": "SMTP Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.EMAIL_FROM || 'noreply@ai-deadline.io.vn' }}",
+        "toEmail": "={{ $env.ADMIN_EMAIL || 'admin@ai-deadline.io.vn' }}",
+        "subject": "={{ $json.emailSubject }}",
+        "emailType": "html",
+        "html": "={{ $json.emailHtml }}",
+        "options": {}
+      },
+      "id": "email-failed",
+      "name": "Send Failed Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1120,
+        500
+      ],
       "credentials": {
         "smtp": {
           "id": "1",
@@ -70,43 +180,143 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{JSON.stringify({success: true, message: 'Deployment notification sent'})}}",
-        "options": {}
+        "responseBody": "={\n  \"success\": true,\n  \"message\": \"Deployment success notification processed\",\n  \"service\": \"{{ $('Extract Success Data').first().json.service }}\",\n  \"status\": \"{{ $('Extract Success Data').first().json.status }}\"\n}",
+        "options": {
+          "responseCode": 200
+        }
       },
-      "name": "Webhook Response",
+      "id": "response-success",
+      "name": "Response Success",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [900, 300]
+      "typeVersion": 1.1,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"message\": \"Deployment failure notification processed\",\n  \"service\": \"{{ $('Extract Failed Data').first().json.service }}\",\n  \"status\": \"failed\"\n}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "response-failed",
+      "name": "Response Failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1340,
+        500
+      ]
     }
   ],
   "connections": {
-    "Webhook Trigger": {
+    "Webhook: Deploy Success": {
       "main": [
         [
           {
-            "node": "HTTP: Log Deployment",
+            "node": "Extract Success Data",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "HTTP: Log Deployment": {
+    "Webhook: Deploy Failed": {
       "main": [
         [
           {
-            "node": "Send Email: Deployment Alert",
+            "node": "Extract Failed Data",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Send Email: Deployment Alert": {
+    "Extract Success Data": {
       "main": [
         [
           {
-            "node": "Webhook Response",
+            "node": "Log Success to Backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Failed Data": {
+      "main": [
+        [
+          {
+            "node": "Log Failed to Backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Success to Backend": {
+      "main": [
+        [
+          {
+            "node": "Prepare Success Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Failed to Backend": {
+      "main": [
+        [
+          {
+            "node": "Prepare Failed Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Success Email": {
+      "main": [
+        [
+          {
+            "node": "Send Success Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Failed Email": {
+      "main": [
+        [
+          {
+            "node": "Send Failed Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Success Email": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Failed Email": {
+      "main": [
+        [
+          {
+            "node": "Response Failed",
             "type": "main",
             "index": 0
           }
@@ -114,12 +324,19 @@
       ]
     }
   },
-  "active": false,
-  "settings": {},
-  "versionId": "6",
-  "id": "6",
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "4",
+  "id": "4",
   "meta": {
     "instanceId": "ai_deadline_n8n"
   },
-  "tags": []
+  "tags": [
+    {
+      "id": "1",
+      "name": "CI/CD"
+    }
+  ]
 }

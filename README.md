@@ -213,27 +213,41 @@ Trigger: Webhook POST từ Backend khi user đăng ký
 
 ### 4.4. Flow 4 - Thông Báo CI/CD Deployment (CI/CD Deployment Notification)
 
-Mục đích: Nhận thông báo từ GitHub Actions khi deploy thành công và ghi log vào hệ thống.
+Mục đích: Nhận thông báo từ GitHub Actions khi deploy thành công hoặc thất bại, ghi log vào hệ thống và gửi email thông báo đến admin.
 
 Cách thức hoạt động:
 
-1. Webhook Trigger lắng nghe sự kiện POST từ GitHub Actions (POST /n8n/deploy-success)
-2. HTTP Request log thông tin deployment vào automation_logs qua Backend webhook
-3. Function Node chuẩn bị nội dung thông báo deployment
-4. IF Node kiểm tra xem deployment có thành công không
-5. Send Email gửi thông báo deployment thành công đến admin
-6. Webhook Response trả về kết quả cho GitHub Actions
+**Luồng Deploy Thành Công:**
+1. Webhook Trigger lắng nghe sự kiện POST từ GitHub Actions (POST /webhook/deploy-success)
+2. Code Node extract dữ liệu deployment (service, status, commit_sha, commit_message, deployed_at, deployed_by, branch)
+3. HTTP Request ghi log thông tin deployment vào automation_logs qua Backend API /api/webhooks/n8n/automation-log
+4. Code Node chuẩn bị nội dung email HTML với template đẹp, responsive
+5. Send Email gửi thông báo deployment thành công đến admin (header màu xanh ✅)
+6. Webhook Response trả về JSON response cho GitHub Actions
+
+**Luồng Deploy Thất Bại:**
+1. Webhook Trigger lắng nghe sự kiện POST từ GitHub Actions (POST /webhook/deploy-failed)
+2. Code Node extract dữ liệu lỗi (service, status, commit_sha, error, failed_at, branch)
+3. HTTP Request ghi log lỗi vào automation_logs với error_message
+4. Code Node chuẩn bị nội dung email HTML cảnh báo lỗi
+5. Send Email gửi thông báo deployment thất bại đến admin (header màu đỏ ❌)
+6. Webhook Response trả về JSON response cho GitHub Actions
 
 Liên hệ Backend/Frontend:
 
-- Backend: nhận log từ n8n về các lần deployment
+- Backend: nhận log từ n8n qua API /api/webhooks/n8n/automation-log, lưu vào bảng automation_logs
 - Frontend: admin có thể xem lịch sử deployment trong trang Automation Logs
-- GitHub Actions: gọi webhook n8n sau khi deploy thành công
-- Email: gửi thông báo đến admin về trạng thái deployment
+- GitHub Actions: gọi webhook n8n sau khi deploy (success hoặc failed)
+- Email: gửi thông báo đến admin (ADMIN_EMAIL env) với nội dung chi tiết về deployment
 
-Input data: Thông tin deployment (service, status, commit_sha, deployed_at)
+Environment Variables cần thiết trong n8n:
+- BACKEND_URL: URL của backend API (mặc định: http://backend:8000)
+- EMAIL_FROM: Email gửi đi
+- ADMIN_EMAIL: Email admin nhận thông báo
+
+Input data: Thông tin deployment (service, status, commit_sha, commit_message, deployed_at, deployed_by, branch, error)
 Output data: Log trong automation_logs, email thông báo đến admin
-Trigger: Webhook POST từ GitHub Actions CI/CD pipeline
+Trigger: Webhook POST từ GitHub Actions CI/CD pipeline (/webhook/deploy-success hoặc /webhook/deploy-failed)
 
 ### 4.5. Flow 5 - Tóm Tắt Hằng Ngày (Personal Daily Digest)
 
